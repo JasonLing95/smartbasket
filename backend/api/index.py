@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import os
 import math
 import hashlib
 import secrets
@@ -17,6 +18,8 @@ from lib.ocr_engine import extract_receipt_data
 from lib.llm_matcher import resolve_unmatched_entity
 import asyncio
 from fastapi.responses import StreamingResponse
+
+APP_ENV = os.getenv("APP_ENV", "development")
 
 app = FastAPI(docs_url="/api/docs", openapi_url="/api/openapi.json")
 
@@ -436,51 +439,80 @@ async def upload_real_receipt(
     file: UploadFile = File(...),
     authorization: Optional[str] = Header(None),
 ):
-    # Pass a clean optional user object context parameter down the transaction pipeline
     user_id = get_optional_user(authorization)
-    try:
-        file_bytes = await file.read()
-        file_hash = hashlib.sha256(file_bytes).hexdigest()
-        existing_receipt = execute_query(
-            "SELECT id, store_name FROM receipts WHERE image_hash = %s;", (file_hash,)
-        )
+    file_bytes = await file.read()
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
 
-        if existing_receipt:
-            return {
-                "status": "success",
-                "message": "Duplicate receipt cached instantly from historical storage parameters.",
-                "store_detected": existing_receipt[0][1],
-                "receipt_id": str(existing_receipt[0][0]),
-                "cached": True,
-            }
+    # 1. ENVIRONMENT AWARE PATTERN - LOCAL DEV RUNS INLINE
+    if APP_ENV == "development":
+        print("┌────────────────────────────────────────────────────────┐")
+        print("│ 💻 LOCAL TESTING DETECTED: Running Synchronous OCR     │")
+        print("└────────────────────────────────────────────────────────┘")
 
         extracted = extract_receipt_data(file_bytes)
-        if extracted["items"]:
-            receipt_id, processed_count = execute_receipt_ingestion_hash_upgraded(
-                user_id=user_id,
-                store_name=extracted["store_name"],
-                items=extracted["items"],
-                file_hash=file_hash,
-                background_tasks=background_tasks,
-                extracted_total=extracted.get("total", 0.0),
-                receipt_date=extracted.get("date"),
+        receipt_id, processed_count = execute_receipt_ingestion_hash_upgraded(
+            user_id=user_id,
+            store_name=extracted["store_name"],
+            items=extracted["items"],
+            file_hash=file_hash,
+            background_tasks=background_tasks,
+            extracted_total=extracted.get("total", 0.0),
+            receipt_date=extracted.get("date"),
+        )
+        return {
+            "status": "success",
+            "mode": "local_synchronous",
+            "store_detected": extracted["store_name"],
+            "receipt_id": str(receipt_id),
+            "cached": False,
+        }
+
+    # 2. ASYNCHRONOUS DECOUPLED INFRASTRUCTURE - PRODUCTION RUNS QUEUED
+    else:
+        try:
+            # Short-circuit on duplicate files directly inside database records
+            existing_receipt = execute_query(
+                "SELECT id, store_name FROM receipts WHERE image_hash = %s;",
+                (file_hash,),
             )
+            if existing_receipt:
+                return {
+                    "status": "success",
+                    "message": "Duplicate receipt cached instantly.",
+                    "store_detected": existing_receipt[0][1],
+                    "receipt_id": str(existing_receipt[0][0]),
+                    "cached": True,
+                }
+
+            # Connect to AWS ecosystem natively using system-level environment vars
+            import boto3
+            import json
+
+            s3 = boto3.client("s3")
+            sqs = boto3.client("sqs", region_name=os.getenv("AWS_REGION", "eu-west-2"))
+
+            bucket_name = os.getenv("AWS_STORAGE_BUCKET_NAME", "smartbasket-receipts")
+            queue_url = os.getenv("AWS_SQS_QUEUE_URL")
+            s3_key = f"receipts/{file_hash}.jpg"
+
+            # Offload file stream straight to S3 bucket storage parameters
+            s3.put_object(Bucket=bucket_name, Key=s3_key, Body=file_bytes)
+
+            # Package lightweight tracking metadata payload
+            job_payload = {"s3_key": s3_key, "user_id": user_id, "file_hash": file_hash}
+
+            # Enqueue execution job into SQS cluster instances
+            sqs.send_message(QueueUrl=queue_url, MessageBody=json.dumps(job_payload))
+
             return {
                 "status": "success",
-                "store_detected": extracted["store_name"],
-                "items_extracted": processed_count,
-                "receipt_id": str(receipt_id),
+                "mode": "production_async_queue",
+                "message": "Receipt uploaded successfully. Processing has been queued.",
                 "cached": False,
             }
-        return {
-            "status": "failed",
-            "detail": "No actionable line items resolved from composition.",
-        }
-    except Exception as e:
-        import traceback
 
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"OCR execution fault: {str(e)}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Async queue fail: {str(e)}")
 
 
 @app.get("/api/receipts/{receipt_id}")

@@ -9,7 +9,14 @@ import easyocr
 from groq import Groq
 
 # Initialize globally
-reader = easyocr.Reader(["en"], gpu=False)
+try:
+    import easyocr
+
+    # Initialize your local reader if available
+    reader = easyocr.Reader(["en"], gpu=False)
+except ImportError:
+    # Fallback context for production serverless instances
+    reader = None
 
 groq_key = os.environ.get("GROQ_API_KEY")
 groq_client = Groq(api_key=groq_key) if groq_key else None
@@ -217,6 +224,16 @@ def extract_receipt_data_fallback(lines, text_blob: str):
 
 
 def extract_receipt_data(file_bytes: bytes):
+    """
+    Core parsing script. Processes raw bytes from an image
+    and outputs a structured dictionary.
+    """
+    if reader is None:
+        # Fallback block used strictly when deployed to Vercel Serverless
+        print("Executing in Lean Production Web Layer. Direct OCR execution disabled.")
+        return {}
+
+    print("Executing heavy EasyOCR sequence...")
     try:
         print("----- OCR START -----")
         results = reader.readtext(file_bytes, detail=1)

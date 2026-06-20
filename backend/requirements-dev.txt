@@ -1,0 +1,29 @@
+# -----------------------------------------------------------------------------
+# Core Web API Framework (Duplicated from requirements.txt)
+# -----------------------------------------------------------------------------
+fastapi
+pydantic
+python-dotenv
+psycopg2-binary
+
+# -----------------------------------------------------------------------------
+# Local Development Server Utilities
+# -----------------------------------------------------------------------------
+uvicorn[standard]     # High-performance ASGI server to run FastAPI locally
+
+# -----------------------------------------------------------------------------
+# Heavy Compute, Machine Learning & OCR (Local Dev & EC2 GPU Worker)
+# -----------------------------------------------------------------------------
+easyocr               # The receipt text extraction engine
+torch                 # Deep learning runtime required by EasyOCR
+torchvision           # Computer vision utilities required by EasyOCR
+
+# -----------------------------------------------------------------------------
+# AWS Cloud Services & Async Queueing Integration
+# -----------------------------------------------------------------------------
+boto3                 # AWS SDK for Python (polls Amazon SQS & downloads from S3)
+
+# -----------------------------------------------------------------------------
+# AI Resolution & Vector Matcher Integration
+# -----------------------------------------------------------------------------
+openai                # Handles LLM fallback resolution for unmatched entities
