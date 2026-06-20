@@ -120,7 +120,7 @@ export default function Page() {
 
   async function refreshDashboardMetrics() {
     try {
-      const fetchHeaders = token ? { "Authorization": `Bearer ${token}` } : {};
+      const fetchHeaders: HeadersInit = token ? { "Authorization": `Bearer ${token}` } : {};
       const alertsRes = await fetch(`${API_BASE}/api/alerts`, { headers: fetchHeaders });
       if (alertsRes.ok) {
         const alertsData = await alertsRes.json();
@@ -247,7 +247,7 @@ export default function Page() {
     setUploading(true);
     const formData = new FormData(); formData.append("file", e.target.files[0]);
     try {
-      const headers = token ? { "Authorization": `Bearer ${token}` } : {};
+      const headers: HeadersInit = token ? { "Authorization": `Bearer ${token}` } : {};
       const res = await fetch(`${API_BASE}/api/receipts/upload`, { method: "POST", headers, body: formData });
       const data = await res.json();
       if (!res.ok) showToast(data.detail || "Couldn't read the receipt.", "error");
@@ -268,7 +268,7 @@ export default function Page() {
   async function handleViewReceipt(id: string) {
     setLoadingReceipt(id);
     try {
-      const fetchHeaders = token ? { "Authorization": `Bearer ${token}` } : {};
+      const fetchHeaders: HeadersInit = token ? { "Authorization": `Bearer ${token}` } : {};
       const res = await fetch(`${API_BASE}/api/receipts/${id}`, { headers: fetchHeaders });
       if (res.ok) {
         const data = await res.json();
