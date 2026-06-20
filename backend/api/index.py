@@ -25,7 +25,10 @@ app = FastAPI(docs_url="/api/docs", openapi_url="/api/openapi.json")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://smartbasket-tau.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
