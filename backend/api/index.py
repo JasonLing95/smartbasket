@@ -448,6 +448,8 @@ async def upload_real_receipt(
         print("│ 💻 LOCAL TESTING DETECTED: Running Synchronous OCR     │")
         print("└────────────────────────────────────────────────────────┘")
 
+        from lib.ocr_engine import extract_receipt_data
+
         extracted = extract_receipt_data(file_bytes)
         receipt_id, processed_count = execute_receipt_ingestion_hash_upgraded(
             user_id=user_id,
