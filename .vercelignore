@@ -1,0 +1,8 @@
+# Force Vercel to look strictly at requirements.txt by hiding the lockfiles
+backend/pyproject.toml
+backend/uv.lock
+
+# Exclude local dev requirements and heavy folders from the cloud bundle
+backend/requirements-dev.txt
+backend/data/
+backend/seed/
