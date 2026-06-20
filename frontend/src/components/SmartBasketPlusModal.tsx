@@ -23,7 +23,7 @@ export default function SmartBasketPlusModal({ isOpen, onClose }: ModalProps) {
     {
       icon: <Sliders className="h-6 w-6 text-emerald-500" />,
       title: "Adjust travel costs to match your preferences",
-      description: "Fine-tune your personal time-and-travel cost metrics to decide exactly how you want to split your shopping trip."
+      description: "Fine-tune your personal travel limits to control how easily your list gets split between different stores."
     }
   ];
 
@@ -31,21 +31,16 @@ export default function SmartBasketPlusModal({ isOpen, onClose }: ModalProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="relative w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-950 p-6 text-slate-100 shadow-2xl transition-all">
         
-        {/* Close Button */}
-        <button 
-          onClick={onClose}
-          className="absolute right-4 top-4 rounded-full p-1 text-slate-400 hover:bg-slate-900 hover:text-slate-200 transition-colors"
-        >
+        <button onClick={onClose} className="absolute right-4 top-4 rounded-full p-1 text-slate-400 hover:bg-slate-900 hover:text-slate-200 transition-colors">
           <X className="h-5 w-5" />
         </button>
 
-        {/* Header */}
         <div className="flex items-center gap-2 mb-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 text-slate-950 shadow-md">
             <Sparkles className="h-4 w-4 stroke-[2.5]" />
           </span>
           <h2 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-amber-400 via-orange-400 to-amber-200 bg-clip-text text-transparent">
-            SmartBasket+
+            Save More With SmartBasket+
           </h2>
         </div>
         
@@ -53,7 +48,6 @@ export default function SmartBasketPlusModal({ isOpen, onClose }: ModalProps) {
           Get alerts, track price trends, and save even more every week.
         </p>
 
-        {/* Benefits List */}
         <div className="space-y-5 mb-8">
           {benefits.map((benefit, idx) => (
             <div key={idx} className="flex gap-4 items-start rounded-xl border border-slate-900 bg-slate-900/40 p-4">
@@ -63,11 +57,6 @@ export default function SmartBasketPlusModal({ isOpen, onClose }: ModalProps) {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="font-semibold text-slate-200 text-sm">{benefit.title}</h3>
-                  {idx === 0 && (
-                    <span className="text-[9px] font-bold tracking-wide uppercase bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded">
-                      Exclusive
-                    </span>
-                  )}
                 </div>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed">{benefit.description}</p>
               </div>
@@ -75,7 +64,6 @@ export default function SmartBasketPlusModal({ isOpen, onClose }: ModalProps) {
           ))}
         </div>
 
-        {/* Pricing & CTA */}
         <div className="rounded-xl bg-gradient-to-b from-slate-900 to-slate-950 p-4 border border-slate-800/80 text-center">
           <div className="flex items-baseline justify-center gap-1 mb-3">
             <span className="text-3xl font-extrabold text-white">£2.99</span>

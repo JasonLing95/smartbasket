@@ -5,7 +5,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, ArrowRight, TrendingDown, Loader2, Search, Plus, Minus, Trash2, ShoppingBasket, HelpCircle, Receipt, Lock, User, Mail, Sparkles, Check, ChevronDown, LogOut, Camera, ChevronRight, X, Info, Zap, ChevronUp } from "lucide-react";
+import { AlertCircle, ArrowRight, TrendingDown, Loader2, Search, Plus, Minus, Trash2, ShoppingBasket, HelpCircle, Receipt, Lock, User, Mail, Sparkles, Check, ChevronDown, LogOut, Camera, ChevronRight, X, Info, Zap, ChevronUp, Database } from "lucide-react";
 import SmartBasketPlusModal from '@/components/SmartBasketPlusModal';
 
 // --- Types ---
@@ -91,10 +91,9 @@ export default function Page() {
     if (!container) return;
 
     let animationId: number;
-
     const scroll = () => {
       if (container) {
-        container.scrollLeft += 1; 
+        container.scrollLeft += 1;
         const halfwayPoint = container.scrollWidth / 2;
         const hitRightWall = Math.ceil(container.scrollLeft + container.clientWidth) >= container.scrollWidth;
         if (container.scrollLeft >= halfwayPoint || hitRightWall) {
@@ -103,7 +102,6 @@ export default function Page() {
       }
       animationId = requestAnimationFrame(scroll);
     };
-
     animationId = requestAnimationFrame(scroll);
     return () => cancelAnimationFrame(animationId);
   }, [isCarouselPaused, alerts.length]);
@@ -295,7 +293,7 @@ export default function Page() {
   return (
     <main className="min-h-screen w-full bg-[#F9FAFB] font-sans text-slate-900 pb-24 selection:bg-emerald-100 selection:text-emerald-900">
       
-      {/* 1. MINIMAL NAVIGATION */}
+      {/* 1. NAVIGATION (UX ALIGNED) */}
       <nav className="sticky top-0 z-40 bg-[#F9FAFB]/80 backdrop-blur-xl border-b border-slate-200/50">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-8">
@@ -346,7 +344,7 @@ export default function Page() {
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-8 space-y-12">
         
-        {/* COMPACT PRICE ALERTS (CAROUSEL) */}
+        {/* CAROUSEL (DEJARGONIZED COPY) */}
         <section className="relative">
           <div className="flex items-center gap-2 mb-3 px-1">
             <Sparkles className="w-4 h-4 text-amber-500" />
@@ -415,13 +413,13 @@ export default function Page() {
           )}
         </section>
 
-        {/* CORE DASHBOARD LOGIC */}
+        {/* DASHBOARD COMPONENT TREE */}
         {activeTab === "dashboard" && token && (
           <div className="relative space-y-12 animate-in fade-in duration-500">
 
-            {/* ⚡ THE UPGRADED FLOATING REAL-TIME ALERT */}
+            {/* REAL-TIME NOTIFICATION CONTAINER */}
             {liveDropAlert && (
-                <div className="fixed top-24 right-4 sm:right-6 z-[100] w-[calc(100%-2rem)] sm:w-full max-w-md bg-white rounded-3xl border border-slate-100 shadow-[0_20px_50px_rgba(0,0,0,0.12)] p-4 sm:p-5 animate-in slide-in-from-top-6 slide-in-from-right-6 fade-in duration-500">                
+              <div className="fixed top-24 right-4 sm:right-6 z-[100] w-[calc(100%-2rem)] sm:w-full max-w-md bg-white rounded-3xl border border-slate-100 shadow-[0_20px_50px_rgba(0,0,0,0.12)] p-4 sm:p-5 animate-in slide-in-from-top-6 slide-in-from-right-6 fade-in duration-500">
                 <div className="flex flex-col gap-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
@@ -433,30 +431,12 @@ export default function Page() {
                         <p className="text-slate-800 font-bold text-sm leading-tight max-w-[280px]">{liveDropAlert}</p>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => setLiveDropAlert(null)} 
-                      className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-full transition-colors shrink-0"
-                    >
+                    <button onClick={() => setLiveDropAlert(null)} className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-full transition-colors shrink-0">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
-                  
                   <div className="flex gap-2">
-                    <Button 
-                      size="sm"
-                      onClick={() => {
-                        const element = document.getElementById('shopping-plan');
-                        if (element) {
-                          element.scrollIntoView({ behavior: 'smooth' });
-                        } else {
-                          if (typeof refreshDashboardMetrics === 'function') {
-                            refreshDashboardMetrics();
-                          }
-                        }
-                        setLiveDropAlert(null);
-                      }} 
-                      className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-full font-semibold text-xs py-4 shadow-sm"
-                    >
+                    <Button size="sm" onClick={() => { document.getElementById('shopping-plan')?.scrollIntoView({ behavior: 'smooth' }); setLiveDropAlert(null); }} className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-full font-semibold text-xs py-4 shadow-sm">
                       See Savings
                     </Button>
                   </div>
@@ -469,7 +449,7 @@ export default function Page() {
               <section className="bg-white rounded-[32px] p-8 sm:p-12 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-50 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
                 <div className="space-y-1 z-10 text-center md:text-left w-full md:w-auto">
-                  <p className="font-semibold text-slate-500 tracking-wide uppercase text-sm">You could save</p>
+                  <p className="font-semibold text-slate-500 tracking-wide uppercase text-sm">You could save today</p>
                   <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tighter text-emerald-600">
                     £{optimizedSplit.net_savings.toFixed(2)}
                   </h1>
@@ -486,7 +466,7 @@ export default function Page() {
               </section>
             )}
 
-            {/* 3. TRANSFORMED ROUTE OPTIMIZATION (SHOPPING PLAN) */}
+            {/* 3. SHOPPING PLAN CONTAINER */}
             {optimizedSplit && (
               <section id="shopping-plan" className="space-y-6 scroll-mt-24">
                 <div className="flex justify-between items-end">
@@ -512,9 +492,7 @@ export default function Page() {
                         <div key={storeName} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/50 flex flex-col justify-between">
                           <div>
                             <div className="flex justify-between items-end mb-2">
-                              <div>
-                                <h3 className="text-lg font-bold text-slate-900">{storeName}</h3>
-                              </div>
+                              <h3 className="text-lg font-bold text-slate-900">{storeName}</h3>
                               <span className="text-xl font-bold text-emerald-600">£{storeTotal.toFixed(2)}</span>
                             </div>
                             <p className="text-sm text-slate-500 font-medium mb-4">Buy these items here:</p>
@@ -541,14 +519,9 @@ export default function Page() {
               </section>
             )}
 
-            {/* 4. SIMPLIFIED BASKET */}
+            {/* 4. BASKET GRAPHICS ITERATOR */}
             <section className="space-y-6">
-              <div className="flex justify-between items-end">
-                <div>
-                  <h2 className="text-2xl font-bold tracking-tight text-slate-900">Your Basket</h2>
-                </div>
-              </div>
-
+              <h2 className="text-2xl font-bold tracking-tight text-slate-900">Your Basket</h2>
               {basketItems.length === 0 ? (
                 <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200">
                   <ShoppingBasket className="w-12 h-12 text-slate-300 mx-auto mb-4" />
@@ -582,7 +555,7 @@ export default function Page() {
                           {minPrice !== null && (
                             <div className="flex flex-col">
                               <span className="text-[10px] font-semibold text-emerald-600 uppercase">Best Price</span>
-                              <span className="font-bold text-slate-900 text-lg">£{(minPrice * item.quantity).toFixed(2)} <span className="text-xs text-slate-400 font-medium">@ {bestStore}</span></span>
+                              <span className="font-bold text-slate-900 text-lg">£{(minPrice * item.quantity).toFixed(2)} <span className="text-xs text-slate-400 font-medium font-sans">@ {bestStore}</span></span>
                             </div>
                           )}
                         </div>
@@ -613,7 +586,7 @@ export default function Page() {
               )}
             </section>
 
-            {/* 5. ADVANCED INSIGHTS (COLLAPSIBLE) */}
+            {/* 5. ADVANCED SYSTEM MODAL OVERLAY WRAPPER */}
             <section className="pt-8 border-t border-slate-200/60">
               <button 
                 onClick={() => setShowAdvancedInsights(!showAdvancedInsights)}
@@ -627,61 +600,84 @@ export default function Page() {
               </button>
 
               {showAdvancedInsights && (
-                <div className="grid md:grid-cols-2 gap-6 mt-6 animate-in fade-in slide-in-from-top-4">
-                  {basketOptions.length > 0 && (
-                    <div className="bg-white rounded-3xl p-6 border border-slate-200/60 shadow-sm flex flex-col max-h-[300px]">
-                      <h3 className="font-bold text-slate-800 mb-4">Compare Store Prices</h3>
-                      <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar">
-                        {basketOptions.map((option, index) => {
-                          const diff = option.total_cost - basketOptions[0].total_cost;
-                          
-                          return (
-                            <div key={option.store_name} className="flex justify-between items-center p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition-colors">
-                              <div className="flex items-center gap-3">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${index === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
-                                  {index + 1}
-                                </div>
-                                <div>
-                                  <p className="font-bold text-slate-900 text-sm">{option.store_name}</p>
-                                  <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{option.items_counted} of {basketItems.length} items found</p>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <span className="block font-bold text-slate-700">£{option.total_cost.toFixed(2)}</span>
-                                {index > 0 && diff > 0 && (
-                                  <span className="block text-[10px] font-bold text-rose-500">+£{diff.toFixed(2)}</span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
+                <div className="space-y-6 mt-6 animate-in fade-in slide-in-from-top-4">
+                  
+                  {/* HACKATHON EVALUATION BADGE ROW */}
+                  <div className="bg-slate-900 text-slate-100 rounded-3xl p-6 border border-slate-800 shadow-xl grid md:grid-cols-2 gap-6 items-center">
+                    <div>
+                      <div className="flex items-center gap-2 mb-2 text-amber-400 font-bold text-xs uppercase tracking-widest">
+                        <Database className="w-4 h-4" /> Hackathon Evaluation Panel
+                      </div>
+                      <h4 className="text-lg font-bold text-white">AWS Backend Integration Details</h4>
+                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                        This application operates fully full-stack using Next.js hosted at the edge, pushing calculations to low-latency tables.
+                      </p>
+                    </div>
+                    <div className="space-y-2 text-xs">
+                      <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex justify-between items-center">
+                        <span className="text-slate-400 font-medium">Core Primary Database</span>
+                        <span className="font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">AWS Aurora PostgreSQL</span>
+                      </div>
+                      <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex justify-between items-center">
+                        <span className="text-slate-400 font-medium">Edge Deployment Layer</span>
+                        <span className="font-mono text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">Vercel Web Framework</span>
                       </div>
                     </div>
-                  )}
+                  </div>
 
-                  {receiptsHistory.length > 0 && (
-                    <div className="bg-white rounded-3xl p-6 border border-slate-200/60 shadow-sm">
-                      <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Receipt className="w-4 h-4 text-slate-400" /> Recent Receipts</h3>
-                      <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2">
-                        {receiptsHistory.map(receipt => (
-                          <div key={receipt.id} onClick={() => handleViewReceipt(receipt.id)} className="flex justify-between items-center p-3 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-100 transition-all">
-                            <div>
-                              <p className="font-semibold text-sm text-slate-800">{receipt.store_name}</p>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{receipt.date}</p>
-                            </div>
-                            <span className="font-bold text-slate-600">£{receipt.total_spent.toFixed(2)}</span>
-                          </div>
-                        ))}
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {basketOptions.length > 0 && (
+                      <div className="bg-white rounded-3xl p-6 border border-slate-200/60 shadow-sm flex flex-col max-h-[300px]">
+                        <h3 className="font-bold text-slate-800 mb-4">Compare Store Prices</h3>
+                        <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar">
+                          {basketOptions.map((option, index) => {
+                            const diff = option.total_cost - basketOptions[0].total_cost;
+                            return (
+                              <div key={option.store_name} className="flex justify-between items-center p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${index === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
+                                    {index + 1}
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-slate-900 text-sm">{option.store_name}</p>
+                                    <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{option.items_counted} of {basketItems.length} items found</p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <span className="block font-bold text-slate-700">£{option.total_cost.toFixed(2)}</span>
+                                  {index > 0 && diff > 0 && <span className="block text-[10px] font-bold text-rose-500">+£{diff.toFixed(2)}</span>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+
+                    {receiptsHistory.length > 0 && (
+                      <div className="bg-white rounded-3xl p-6 border border-slate-200/60 shadow-sm">
+                        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Receipt className="w-4 h-4 text-slate-400" /> Recent Receipts</h3>
+                        <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2">
+                          {receiptsHistory.map(receipt => (
+                            <div key={receipt.id} onClick={() => handleViewReceipt(receipt.id)} className="flex justify-between items-center p-3 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-100 transition-all">
+                              <div>
+                                <p className="font-semibold text-sm text-slate-800">{receipt.store_name}</p>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{receipt.date}</p>
+                              </div>
+                              <span className="font-bold text-slate-600">£{receipt.total_spent.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </section>
           </div>
         )}
 
-        {/* CATALOGUE TAB */}
+        {/* CATALOGUE CONTROLS */}
         {activeTab === "catalog" && (
            <div className="space-y-6 animate-in fade-in duration-500">
              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
@@ -741,7 +737,7 @@ export default function Page() {
            </div>
         )}
 
-        {/* LOGGED OUT STATE */}
+        {/* OUTSIDE SESSION LANDING INDEX */}
         {!token && activeTab === "dashboard" && (
           <div className="py-32 text-center animate-in fade-in duration-500 max-w-lg mx-auto">
             <div className="w-20 h-20 bg-white rounded-3xl shadow-sm border border-slate-100 flex items-center justify-center mx-auto mb-6 transform rotate-3">
@@ -754,14 +750,14 @@ export default function Page() {
         )}
       </div>
 
-      {/* 6. FLOATING ACTION BUTTON (UPLOAD RECEIPT) */}
+      {/* FLOATING ACTION SCAN TRIGGER */}
       {token && (
         <>
           <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleReceiptUpload} />
           <button 
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="fixed bottom-8 right-8 z-40 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-4 rounded-full shadow-[0_8px_30px_rgb(16,185,129,0.3)] font-bold text-sm flex items-center gap-2 transition-transform hover:scale-105 active:scale-95 group disabled:opacity-70 disabled:hover:scale-100"
+            className="fixed bottom-8 right-8 z-40 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-4 rounded-full shadow-[0_8px_30px_rgb(16,185,129,0.3)] font-bold text-sm flex items-center gap-2 transition-transform hover:scale-105 active:scale-95 group disabled:opacity-70"
           >
             {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5 group-hover:-rotate-12 transition-transform" />}
             <span className="hidden sm:block">{uploading ? "Scanning..." : "Scan Receipt"}</span>
@@ -769,7 +765,7 @@ export default function Page() {
         </>
       )}
 
-      {/* MODALS & OVERLAYS */}
+      {/* OVERLAY RENDER MODALS */}
       {showAuthModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="w-full max-w-md bg-white rounded-[32px] shadow-2xl p-8 relative">
@@ -779,18 +775,12 @@ export default function Page() {
             <p className="text-slate-500 text-sm mb-8">{isAuthRegister ? "Start tracking prices and saving money today." : "Sign in to access your custom shopping plans."}</p>
             <form onSubmit={handleAuthSubmission} className="space-y-4">
               {authModalError && <div className="p-3 bg-rose-50 text-rose-600 rounded-xl text-xs font-semibold">{authModalError}</div>}
-              <div>
-                <input type="text" placeholder="Username" value={authUsername} onChange={e => {setAuthUsername(e.target.value); setFieldErrors({});}} className={`w-full bg-slate-50 border ${fieldErrors.username ? 'border-rose-300' : 'border-slate-200'} rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900`} />
-              </div>
+              <input type="text" placeholder="Username" value={authUsername} onChange={e => {setAuthUsername(e.target.value); setFieldErrors({});}} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-slate-900" />
               {isAuthRegister && (
-                <div>
-                  <input type="email" placeholder="Email" value={authEmail} onChange={e => {setAuthEmail(e.target.value); setFieldErrors({});}} className={`w-full bg-slate-50 border ${fieldErrors.email ? 'border-rose-300' : 'border-slate-200'} rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900`} />
-                </div>
+                <input type="email" placeholder="Email" value={authEmail} onChange={e => {setAuthEmail(e.target.value); setFieldErrors({});}} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-slate-900" />
               )}
-              <div>
-                <input type="password" placeholder="Password" value={authPassword} onChange={e => {setAuthPassword(e.target.value); setFieldErrors({});}} className={`w-full bg-slate-50 border ${fieldErrors.password ? 'border-rose-300' : 'border-slate-200'} rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900`} />
-              </div>
-              <Button type="submit" disabled={authLoading} className="w-full bg-slate-900 text-white rounded-xl py-6 font-semibold shadow-md mt-2">{authLoading ? <Loader2 className="w-5 h-5 animate-spin"/> : isAuthRegister ? "Create Account" : "Sign In"}</Button>
+              <input type="password" placeholder="Password" value={authPassword} onChange={e => {setAuthPassword(e.target.value); setFieldErrors({});}} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-slate-900" />
+              <Button type="submit" disabled={authLoading} className="w-full bg-slate-900 text-white rounded-xl py-6 font-semibold mt-2">{authLoading ? <Loader2 className="w-5 h-5 animate-spin"/> : isAuthRegister ? "Create Account" : "Sign In"}</Button>
             </form>
             <button onClick={() => setIsAuthRegister(!isAuthRegister)} className="w-full text-center text-sm font-semibold text-slate-500 mt-6 hover:text-slate-900">{isAuthRegister ? "Already have an account?" : "Need an account?"}</button>
           </div>

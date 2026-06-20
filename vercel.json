@@ -9,7 +9,10 @@
       "root": "backend",
       "routePrefix": "/api",
       "builder": "@vercel/python",
-      "entrypoint": "api/index.py"
+      "entrypoint": "api/index.py",
+      "config": {
+        "useRequirements": "requirements.txt"
+      }
     }
   }
 }
