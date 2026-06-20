@@ -14,7 +14,6 @@ from pydantic import BaseModel
 from typing import List, Optional
 from lib.db import execute_query, get_db_pool
 from lib.matcher import find_canonical_item
-from lib.ocr_engine import extract_receipt_data
 from lib.llm_matcher import resolve_unmatched_entity
 import asyncio
 from fastapi.responses import StreamingResponse
