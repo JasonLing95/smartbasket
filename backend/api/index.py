@@ -692,7 +692,7 @@ async def compare_basket(
         )
 
 
-@app.get("/api/alerts")
+@app.get("/alerts")
 async def get_active_alerts(authorization: Optional[str] = Header(None)):
     user_id = get_optional_user(authorization)
     try:
