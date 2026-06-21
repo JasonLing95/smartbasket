@@ -17,6 +17,8 @@ from lib.matcher import find_canonical_item
 from lib.llm_matcher import resolve_unmatched_entity
 import asyncio
 from fastapi.responses import StreamingResponse
+import psycopg
+from psycopg.rows import dict_row
 
 APP_ENV = os.getenv("APP_ENV", "development")
 
@@ -509,11 +511,39 @@ async def upload_real_receipt(
                 "status": "success",
                 "mode": "production_async_queue",
                 "message": "Receipt uploaded successfully. Processing has been queued.",
+                "receipt_id": file_hash,
                 "cached": False,
             }
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Async queue fail: {str(e)}")
+
+
+@app.get("/receipts/{file_hash}/status")
+def check_receipt_status(file_hash: str):
+    """
+    Frontend polls this using the image hash.
+    If the worker is done, the row will exist in the DB.
+    """
+    try:
+        # Check if the worker has successfully ingested the receipt
+        record = execute_query(
+            "SELECT id, store_name FROM receipts WHERE image_hash = %s LIMIT 1;",
+            (file_hash,),
+        )
+
+        if record:
+            # The worker finished and saved it!
+            return {
+                "status": "completed",
+                "data": {"receipt_id": str(record[0][0]), "store_name": record[0][1]},
+            }
+        else:
+            # The row doesn't exist yet, meaning the worker is still processing
+            return {"status": "processing"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/receipts/{receipt_id}")

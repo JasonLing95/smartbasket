@@ -58,6 +58,7 @@ export default function Page() {
   const [loadingReceipt, setLoadingReceipt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [pollingReceiptId, setPollingReceiptId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CatalogItem[]>([]);
   const [actionId, setActionId] = useState<string | null>(null);
@@ -115,6 +116,43 @@ export default function Page() {
     };
     return () => { eventSource.close(); };
   }, [activeUser, API_BASE]);
+
+  // --- ASYNC RECEIPT POLLING LOGIC ---
+  useEffect(() => {
+    if (!pollingReceiptId) return;
+
+    const checkWorkerStatus = async () => {
+      try {
+        const fetchHeaders: HeadersInit = token ? { "Authorization": `Bearer ${token}` } : {};
+        // Hit the new Vercel status endpoint
+        const res = await fetch(`${API_BASE}/api/receipts/${pollingReceiptId}/status`, { headers: fetchHeaders });
+        
+        if (!res.ok) return; // Wait for the next interval if there's a temporary network blip
+        const data = await res.json();
+
+        if (data.status === "completed") {
+          setPollingReceiptId(null); // Stop polling
+          setUploading(false);       // Stop the button spinner
+          showToast("Receipt successfully parsed and saved!", "success");
+          refreshDashboardMetrics(); // Refresh the UI to show the new basket items
+        } else if (data.status === "failed") {
+          setPollingReceiptId(null);
+          setUploading(false);
+          showToast("Worker failed to process this receipt.", "error");
+        }
+        // If data.status is "processing" or "pending", we do nothing. 
+        // The interval will just check again in 3 seconds.
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+    };
+
+    // Ping the database every 3 seconds
+    const intervalId = setInterval(checkWorkerStatus, 3000);
+    
+    // Cleanup interval if the component unmounts or ID changes
+    return () => clearInterval(intervalId);
+  }, [pollingReceiptId, token, API_BASE]);
 
   async function refreshDashboardMetrics() {
     try {
@@ -242,17 +280,39 @@ export default function Page() {
 
   const handleReceiptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    setUploading(true);
-    const formData = new FormData(); formData.append("file", e.target.files[0]);
+    
+    setUploading(true); // Start the spinner
+    const formData = new FormData(); 
+    formData.append("file", e.target.files[0]);
+    
     try {
       const headers: HeadersInit = token ? { "Authorization": `Bearer ${token}` } : {};
       const res = await fetch(`${API_BASE}/api/receipts/upload`, { method: "POST", headers, body: formData });
       const data = await res.json();
-      if (!res.ok) showToast(data.detail || "Couldn't read the receipt.", "error");
-      else if (data.cached) showToast("Duplicate receipt.", "cached");
-      else showToast(`Scanned items from ${data.store_detected || "receipt"}.`, "success");
-      await refreshDashboardMetrics();
-    } catch (error) { showToast("Upload failed.", "error"); } finally { setUploading(false); e.target.value = ""; }
+      
+      if (!res.ok) {
+        showToast(data.detail || "Couldn't upload the receipt.", "error");
+        setUploading(false);
+      } else if (data.cached) {
+        showToast("Duplicate receipt.", "cached");
+        setUploading(false);
+      } else if (data.receipt_id) {
+        // Vercel successfully pushed to SQS! 
+        showToast("Receipt queued! Analyzing in background...", "info");
+        // Start the polling loop. (Do NOT setUploading(false) yet!)
+        setPollingReceiptId(data.receipt_id); 
+      } else {
+        // Fallback just in case
+        showToast("Uploaded successfully.", "success");
+        setUploading(false);
+        refreshDashboardMetrics();
+      }
+    } catch (error) { 
+        showToast("Upload failed.", "error"); 
+        setUploading(false); 
+    } finally { 
+        e.target.value = ""; // Reset the file input
+    }
   };
 
   const getCheapestPrice = (prices: Record<string, BasketItemPrice | null>) => {
