@@ -1,6 +1,7 @@
 # lib/db.py
 import os
 import psycopg2
+from psycopg2 import pool  # this is necessary for connection pooling
 from urllib.parse import urlparse
 
 _connection_pool = None
@@ -21,7 +22,7 @@ def get_db_pool():
 
     # 2. Instantiate the connection pool
     try:
-        _connection_pool = psycopg2.pool.ThreadedConnectionPool(
+        _connection_pool = pool.ThreadedConnectionPool(
             minconn=1,
             maxconn=10,
             host=parsed_url.hostname,
