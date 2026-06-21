@@ -289,8 +289,8 @@ export default function Page() {
       
       // Compress the image to guarantee it stays under Vercel's 4.5MB limit
       const options = {
-        maxSizeMB: 3.5, 
-        maxWidthOrHeight: 1920,
+        maxSizeMB: 1,
+        maxWidthOrHeight: 1600,
         useWebWorker: true
       };
       const compressedFile = await imageCompression(originalFile, options);
