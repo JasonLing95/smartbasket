@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
+import sys
+import logging
 import math
 import hashlib
 import secrets
@@ -17,6 +19,13 @@ from lib.matcher import find_canonical_item
 from lib.llm_matcher import resolve_unmatched_entity
 import asyncio
 from fastapi.responses import StreamingResponse
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+logger = logging.getLogger(__name__)
 
 APP_ENV = os.getenv("APP_ENV", "development")
 
@@ -154,14 +163,14 @@ async def process_alerts_background(
 
                 matches = cursor.fetchall()
                 if not matches:
-                    print(
+                    logger.info(
                         f"🔍 No users found tracking item {item_id} at a price higher than £{price:.2f}."
                     )
                     sys.stdout.flush()
 
                 for user in matches:
                     username = user[0]
-                    print(
+                    logger.info(
                         f"📢 ALERT: SQL Trigger matched! Pushing live notification to {username}..."
                     )
                     sys.stdout.flush()
@@ -171,7 +180,7 @@ async def process_alerts_background(
                     await notify_user(username, live_message)
 
     except Exception as e:
-        print(f"Background alert failure: {e}")
+        logger.info(f"Background alert failure: {e}")
         sys.stdout.flush()
     finally:
         pool.putconn(conn)
@@ -258,7 +267,7 @@ def execute_receipt_ingestion_hash_upgraded(
         raw_string = item.get("raw_string", "")
 
         if not raw_string:
-            print("⚠️ Ingestion blocked an empty string stub. Skipping this row.")
+            logger.info("⚠️ Ingestion blocked an empty string stub. Skipping this row.")
             continue
 
         # ✅ FIXED: Extract the new loyalty-aware properties from the OCR engine
@@ -280,7 +289,9 @@ def execute_receipt_ingestion_hash_upgraded(
             ai_action = ai_resolution.get("action")
 
             if ai_action == "skip":
-                print(f"⚠️ AI Matcher skipped '{raw_string}'. Dropping from ingestion.")
+                logger.info(
+                    f"⚠️ AI Matcher skipped '{raw_string}'. Dropping from ingestion."
+                )
                 continue
 
             ai_match_id = ai_resolution.get("matched_item_id")
@@ -444,9 +455,9 @@ async def upload_real_receipt(
 
     # 1. ENVIRONMENT AWARE PATTERN - LOCAL DEV RUNS INLINE
     if APP_ENV == "development":
-        print("┌────────────────────────────────────────────────────────┐")
-        print("│ 💻 LOCAL TESTING DETECTED: Running Synchronous OCR     │")
-        print("└────────────────────────────────────────────────────────┘")
+        logger.info("┌────────────────────────────────────────────────────────┐")
+        logger.info("│ 💻 LOCAL TESTING DETECTED: Running Synchronous OCR     │")
+        logger.info("└────────────────────────────────────────────────────────┘")
 
         from lib.ocr_engine import extract_receipt_data
 
@@ -471,12 +482,17 @@ async def upload_real_receipt(
     # 2. ASYNCHRONOUS DECOUPLED INFRASTRUCTURE - PRODUCTION RUNS QUEUED
     else:
         try:
+            logger.info(f"🚀 Starting async upload for receipt hash: {file_hash}")
+
             # Short-circuit on duplicate files directly inside database records
             existing_receipt = execute_query(
                 "SELECT id, store_name FROM receipts WHERE image_hash = %s;",
                 (file_hash,),
             )
             if existing_receipt:
+                logger.info(
+                    f"♻️ Duplicate receipt found. Cached ID: {existing_receipt[0][0]}"
+                )
                 return {
                     "status": "success",
                     "message": "Duplicate receipt cached instantly.",
@@ -497,14 +513,17 @@ async def upload_real_receipt(
             s3_key = f"receipts/{file_hash}.jpg"
 
             # Offload file stream straight to S3 bucket storage parameters
+            logger.info(f"📦 Uploading image to S3 bucket ({bucket_name})...")
             s3.put_object(Bucket=bucket_name, Key=s3_key, Body=file_bytes)
 
             # Package lightweight tracking metadata payload
             job_payload = {"s3_key": s3_key, "user_id": user_id, "file_hash": file_hash}
 
             # Enqueue execution job into SQS cluster instances
+            logger.info(f"📨 Sending job payload to SQS Queue...")
             sqs.send_message(QueueUrl=queue_url, MessageBody=json.dumps(job_payload))
 
+            logger.info("✅ Receipt successfully queued for EC2 worker!")
             return {
                 "status": "success",
                 "mode": "production_async_queue",
@@ -514,6 +533,7 @@ async def upload_real_receipt(
             }
 
         except Exception as e:
+            logger.error(f"🔥 FATAL ASYNC UPLOAD ERROR: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Async queue fail: {str(e)}")
 
 
