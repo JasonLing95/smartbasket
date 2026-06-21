@@ -17,8 +17,6 @@ from lib.matcher import find_canonical_item
 from lib.llm_matcher import resolve_unmatched_entity
 import asyncio
 from fastapi.responses import StreamingResponse
-import psycopg
-from psycopg.rows import dict_row
 
 APP_ENV = os.getenv("APP_ENV", "development")
 
