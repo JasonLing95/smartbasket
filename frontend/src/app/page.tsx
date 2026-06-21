@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, ArrowRight, TrendingDown, Loader2, Search, Plus, Minus, Trash2, ShoppingBasket, HelpCircle, Receipt, Lock, User, Mail, Sparkles, Check, ChevronDown, LogOut, Camera, ChevronRight, X, Info, Zap, ChevronUp, Database } from "lucide-react";
 import SmartBasketPlusModal from '@/components/SmartBasketPlusModal';
+import imageCompression from 'browser-image-compression';
 
 // --- Types ---
 interface DetailedBasketItem { id: string; name: string; quantity: number; }
@@ -281,11 +282,22 @@ export default function Page() {
   const handleReceiptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     
-    setUploading(true); // Start the spinner
-    const formData = new FormData(); 
-    formData.append("file", e.target.files[0]);
+    setUploading(true);
     
     try {
+      const originalFile = e.target.files[0];
+      
+      // Compress the image to guarantee it stays under Vercel's 4.5MB limit
+      const options = {
+        maxSizeMB: 3.5, 
+        maxWidthOrHeight: 1920,
+        useWebWorker: true
+      };
+      const compressedFile = await imageCompression(originalFile, options);
+
+      const formData = new FormData(); 
+      formData.append("file", compressedFile);
+      
       const headers: HeadersInit = token ? { "Authorization": `Bearer ${token}` } : {};
       const res = await fetch(`${API_BASE}/api/receipts/upload`, { method: "POST", headers, body: formData });
       const data = await res.json();
@@ -297,12 +309,9 @@ export default function Page() {
         showToast("Duplicate receipt.", "cached");
         setUploading(false);
       } else if (data.receipt_id) {
-        // Vercel successfully pushed to SQS! 
         showToast("Receipt queued! Analyzing in background...", "info");
-        // Start the polling loop. (Do NOT setUploading(false) yet!)
         setPollingReceiptId(data.receipt_id); 
       } else {
-        // Fallback just in case
         showToast("Uploaded successfully.", "success");
         setUploading(false);
         refreshDashboardMetrics();
@@ -311,7 +320,7 @@ export default function Page() {
         showToast("Upload failed.", "error"); 
         setUploading(false); 
     } finally { 
-        e.target.value = ""; // Reset the file input
+        e.target.value = ""; 
     }
   };
 
