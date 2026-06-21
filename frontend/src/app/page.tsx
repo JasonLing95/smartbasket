@@ -295,6 +295,15 @@ export default function Page() {
       };
       const compressedFile = await imageCompression(originalFile, options);
 
+      console.log(`Original Size: ${(originalFile.size / 1024 / 1024).toFixed(2)} MB`);
+      console.log(`Compressed Size: ${(compressedFile.size / 1024 / 1024).toFixed(2)} MB`);
+
+      if (compressedFile.size > 4 * 1024 * 1024) {
+          showToast("Compression failed: File is still too large.", "error");
+          setUploading(false);
+          return;
+      }
+
       const formData = new FormData(); 
       formData.append("file", compressedFile);
       
