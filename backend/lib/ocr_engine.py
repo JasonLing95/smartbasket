@@ -167,7 +167,7 @@ def extract_receipt_data_via_llm(text_blob: str) -> dict | None:
         "7. CRITICAL - EXTENDED TAX LETTERS & OCR MUTATIONS: UK supermarkets append tax letters (A, B, C, D, E, F, V, or *) to the far right. Ignore them. WARNING: OCR frequently misreads 'F' as '5' or '8', 'B' as '8', and 'A' as '4'. DISCARD THESE.\n"
         "8. CRITICAL - OCR NOISE & THE '8' MUTATION: OCR heavily misreads the '£' symbol as the number '8', leading to inflated prices (e.g., OCR reads '£5.50' as '85.50', or '£9.20' as '89.20'). Single grocery items rarely cost over £20. If you see a price starting with an 8 (e.g., 8X.XX), you MUST assume the leading '8' is a mangled '£' sign. Drop the '8' and extract the remaining float (e.g., '85.50' becomes 5.50, '89.20' becomes 9.20). Strip all other currency characters.\n"
         "9. CRITICAL - DUAL PRICE COLUMNS & LINE TOTALS: If you see BOTH a Unit Price and a Line Total on the same row (e.g., '5 x £1.75 8.75'), you MUST extract the smaller unit price (£1.75) as the 'base_price', and the explicit final larger amount (£8.75) as the 'line_total'. Do NOT ignore the line total."
-        "10. CRITICAL - HEADER GLUE & FIRST ITEMS: OCR engines frequently merge the very first grocery item with the column headers (e.g., 'QTY DESCRIPTION PRICE 1 M FLAT MUSHROOMS £1.50'). If you see a grocery item glued to words like 'QTY', 'DESCRIPTION', or 'PRICE', you MUST extract the item and its price. Do NOT discard the entire line as a header."
+        "10. CRITICAL - TOTAL EXTRACTION & ITEM COUNTS: Stores like Sainsbury's often prefix the total line with an item count (e.g., '3 BALANCE DUE £9.20'). You MUST extract the price associated with this line (£9.20) as the true total. Explicitly IGNORE all payment methods below it (e.g., 'GIFT CARD £4.10', 'CASH', 'CREDIT/DEBIT'). Never extract a partial tender amount as the final total."
         "11. CRITICAL - WEIGHED PRODUCE / MEAT UNITS: When loose produce or meat is sold by weight, the receipt will often span multiple lines, listing a weight or unit rate first, followed by the actual final price paid on the next line or on the extreme right (e.g., '0.450 kg @ £1.50/kg \n LOOSE BANANAS £0.68'). You MUST extract the actual final amount paid (£0.68) as the net base_price, and set the quantity strictly to 1. NEVER use the weight rate (£1.50) as the price.\n"
         "12. CRITICAL - VOIDS, CANCELLATIONS, & REFUNDS: If an item was scanned by mistake and subsequently removed by the cashier, it will appear with a 'VOID', 'LESS', or '-' prefix or suffix, alongside a negative value (e.g., 'VOID - JS LARGE GARLIC -£0.50'). You MUST match this voided line to the original positive entry above it and decrease that item's quantity or remove it entirely. NEVER output a standalone item with a negative base_price or a negative quantity.\n"
         "13. CRITICAL - THE VOLUME/WEIGHT TRAP: Supermarket items often contain volume or weight metrics in the name (e.g., '1.75L', '500g', '1KG', '2.5L'). NEVER extract these numbers as the base_price. Ignore any float attached to a metric unit and look further right for the actual currency price.\n"
@@ -319,10 +319,10 @@ def extract_receipt_data(file_bytes: bytes):
                 )
                 structured_data["total"] = calculated_total
             elif abs(float(extracted_total) - calculated_total) > 0.01:
-                if abs(float(extracted_total) - calculated_total) > 5.00:
+                if abs(float(extracted_total) - calculated_total) > 2.00:
                     if calculated_total > float(extracted_total):
                         logger.error(
-                            f"🚨 MASSIVE deviation (Extracted: {extracted_total}, Calculated: {calculated_total}). LLM likely missed discounts. Trusting extracted total."
+                            f"🚨 MASSIVE deviation (Extracted: {extracted_total}, Calculated: {calculated_total}). LLM likely missed discounts or grabbed a gift card. Trusting extracted total."
                         )
                     else:
                         logger.error(
