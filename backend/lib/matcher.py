@@ -1,4 +1,5 @@
 # lib/matcher.py
+from __future__ import annotations
 from lib.db import execute_query
 
 

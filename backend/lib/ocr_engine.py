@@ -1,4 +1,5 @@
 # lib/ocr_engine.py
+from __future__ import annotations
 import os
 import json
 import re
