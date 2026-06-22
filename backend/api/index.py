@@ -11,7 +11,15 @@ import math
 import hashlib
 import secrets
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, BackgroundTasks, File, UploadFile, Header
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    BackgroundTasks,
+    File,
+    UploadFile,
+    Header,
+    Form,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -452,11 +460,15 @@ def logout_session(authorization: Optional[str] = Header(None)):
 async def upload_real_receipt(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    original_hash: Optional[str] = Form(None),
     authorization: Optional[str] = Header(None),
 ):
     user_id = get_optional_user(authorization)
     file_bytes = await file.read()
-    file_hash = hashlib.sha256(file_bytes).hexdigest()
+
+    file_hash = (
+        original_hash if original_hash else hashlib.sha256(file_bytes).hexdigest()
+    )
 
     # 1. ENVIRONMENT AWARE PATTERN - LOCAL DEV RUNS INLINE
     if APP_ENV == "development":

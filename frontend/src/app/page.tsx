@@ -304,8 +304,14 @@ export default function Page() {
           return;
       }
 
+      const arrayBuffer = await originalFile.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const originalFileHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
       const formData = new FormData(); 
       formData.append("file", compressedFile);
+      formData.append("original_hash", originalFileHash);
       
       const headers: HeadersInit = token ? { "Authorization": `Bearer ${token}` } : {};
       const res = await fetch(`${API_BASE}/api/receipts/upload`, { method: "POST", headers, body: formData });
