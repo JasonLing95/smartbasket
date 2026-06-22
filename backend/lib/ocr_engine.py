@@ -272,19 +272,30 @@ def extract_receipt_data(file_bytes: bytes):
                 )
                 return extract_receipt_data_fallback(lines, text_blob)
 
-            # Calculate the true total using base prices minus discounts
+            for item in structured_data["items"]:
+                if item.get("base_price") is None:
+                    # If base_price is null, try to reverse-engineer it from the line_total
+                    if item.get("line_total") is not None and item.get("quantity"):
+                        item["base_price"] = float(item["line_total"]) / int(
+                            item["quantity"]
+                        )
+                    else:
+                        item["base_price"] = 0.0
+
+                # Ensure discount is never None
+                if item.get("discount_applied") is None:
+                    item["discount_applied"] = 0.0
+
+                # Ensure line_total is never None (fallback to base * qty)
+                if item.get("line_total") is None:
+                    item["line_total"] = float(item["base_price"]) * int(
+                        item.get("quantity", 1)
+                    )
+
+            # Now the math will execute safely because no value can possibly be None
             calculated_total = round(
                 sum(
-                    float(
-                        item.get(
-                            "line_total",
-                            (
-                                float(item.get("base_price", item.get("unit_price", 0)))
-                                - float(item.get("discount_applied", 0))
-                            )
-                            * int(item.get("quantity", 1)),
-                        )
-                    )
+                    float(item.get("line_total")) - float(item.get("discount_applied"))
                     for item in structured_data["items"]
                 ),
                 2,
