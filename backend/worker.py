@@ -3,6 +3,10 @@ import time
 import json
 import boto3
 import logging
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import sys
 from fastapi import BackgroundTasks
 from lib.ocr_engine import extract_receipt_data
