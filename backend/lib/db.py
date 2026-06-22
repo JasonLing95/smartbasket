@@ -3,6 +3,9 @@ import os
 import psycopg2
 from psycopg2 import pool  # this is necessary for connection pooling
 from urllib.parse import urlparse
+import logging
+
+logger = logging.getLogger(__name__)
 
 _connection_pool = None
 
@@ -34,7 +37,9 @@ def get_db_pool():
         )
         return _connection_pool
     except Exception as e:
-        print(f"❌ Connection pool initialization engine failed: {e}")
+        logger.error(
+            f"❌ Connection pool initialization engine failed: {e}", exc_info=True
+        )
         raise e
 
 
@@ -50,6 +55,7 @@ def execute_query(query, params=None, commit=False, fetch_res=False):
                 return res
             return cursor.fetchall()
     except Exception as e:
+        logger.error(f"❌ Database query execution failed: {e}", exc_info=True)
         if commit:
             conn.rollback()
         raise e

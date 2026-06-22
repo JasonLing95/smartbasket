@@ -6,7 +6,10 @@ import re
 import math
 import statistics
 import easyocr
+import logging
 from groq import Groq
+
+logger = logging.getLogger(__name__)
 
 # Initialize globally
 try:
@@ -148,6 +151,7 @@ def extract_receipt_data_via_llm(text_blob: str) -> dict | None:
     multi-buy line items into canonical quantities and individual unit prices.
     """
     if not groq_client:
+        logger.warning("Groq client not initialized. Skipping LLM extraction.")
         return None
 
     system_instruction = (
@@ -179,6 +183,7 @@ def extract_receipt_data_via_llm(text_blob: str) -> dict | None:
     )
 
     try:
+        logger.info("Sending text blob to Groq LLM for structural parsing...")
         completion = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
@@ -188,9 +193,11 @@ def extract_receipt_data_via_llm(text_blob: str) -> dict | None:
             temperature=0.0,
             response_format={"type": "json_object"},
         )
-        return json.loads(completion.choices[0].message.content)
+        parsed_data = json.loads(completion.choices[0].message.content)
+        logger.debug(f"LLM Raw Output: {json.dumps(parsed_data)}")
+        return parsed_data
     except Exception as e:
-        print(f"Groq intelligent document parser error: {e}")
+        logger.error(f"Groq intelligent document parser error: {e}", exc_info=True)
         return None
 
 
@@ -230,23 +237,23 @@ def extract_receipt_data(file_bytes: bytes):
     """
     if reader is None:
         # Fallback block used strictly when deployed to Vercel Serverless
-        print("Executing in Lean Production Web Layer. Direct OCR execution disabled.")
+        logger.warning(
+            "Executing in Lean Production Web Layer. Direct OCR execution disabled."
+        )
         return {}
 
-    print("Executing heavy EasyOCR sequence...")
+    logger.info("Executing heavy EasyOCR sequence...")
     try:
-        print("----- OCR START -----")
+        logger.info("----- OCR START -----")
         results = reader.readtext(file_bytes, detail=1)
 
-        # 1. NEW: Deskew the raw coordinates
         straightened_results = deskew_positions(results)
-
         text_blob = "\n".join(text for _, text, _ in straightened_results)
-
-        # 2. NEW: Group lines using the straightened geometric data
         lines = group_into_lines(straightened_results)
-
         full_text_dump = "\n".join(lines)
+
+        logger.info(f"Raw Extracted Text Length: {len(full_text_dump)} chars")
+        logger.debug(f"Raw Extracted Text Dump:\n{full_text_dump}")
 
         structured_data = extract_receipt_data_via_llm(full_text_dump)
 
@@ -260,7 +267,7 @@ def extract_receipt_data(file_bytes: bytes):
 
             # If no valid items remain, fallback immediately
             if not structured_data["items"]:
-                print(
+                logger.warning(
                     "⚠️ AI returned no valid items. Triggering regex structure fallback..."
                 )
                 return extract_receipt_data_fallback(lines, text_blob)
@@ -291,39 +298,35 @@ def extract_receipt_data(file_bytes: bytes):
             extracted_total = structured_data.get("total")
 
             if not extracted_total:
-                print(f"⚠️ Total missing. Injecting calculated sum: {calculated_total}")
+                logger.warning(
+                    f"⚠️ Total missing. Injecting calculated sum: {calculated_total}"
+                )
                 structured_data["total"] = calculated_total
             elif abs(float(extracted_total) - calculated_total) > 0.01:
-                # Directional safeguard for massive deviations
                 if abs(float(extracted_total) - calculated_total) > 5.00:
                     if calculated_total > float(extracted_total):
-                        # The LLM calculated way too much (likely missed discounts or split items). Trust the receipt.
-                        print(
+                        logger.error(
                             f"🚨 MASSIVE deviation (Extracted: {extracted_total}, Calculated: {calculated_total}). LLM likely missed discounts. Trusting extracted total."
                         )
-                        # Optional: Flag for manual review
                     else:
-                        # The extracted total is way too high (likely an OCR typo like reading '£' as '2'). Trust the math.
-                        print(
+                        logger.error(
                             f"🚨 MASSIVE deviation (Extracted: {extracted_total}, Calculated: {calculated_total}). Likely OCR failure on the Total. Trusting calculated sum."
                         )
                         structured_data["total"] = calculated_total
                 else:
-                    print(
+                    logger.warning(
                         f"⚠️ Arithmetic mismatch! Extracted: {extracted_total}, Calculated: {calculated_total}. Trusting extracted total."
                     )
 
-            print("----- OCR COMPLETE (STRAT: STRUCTURED AI) -----")
-            print(structured_data)  # TODO: Remove this debug print in production
-            print("Store:", structured_data.get("store_name"))
-            print("Date Extracted:", structured_data.get("date"))
-            print("Items Resolved:", len(structured_data["items"]))
-            print("Total Cost:", structured_data.get("total"))
+            logger.info("----- OCR COMPLETE (STRAT: STRUCTURED AI) -----")
+            logger.info(
+                f"Store: {structured_data.get('store_name')} | Date: {structured_data.get('date')} | Items Resolved: {len(structured_data['items'])} | Total Cost: {structured_data.get('total')}"
+            )
             return structured_data
 
-        print("⚠️ AI layer unaligned. Triggering regex structure fallback...")
+        logger.warning("⚠️ AI layer unaligned. Triggering regex structure fallback...")
         return extract_receipt_data_fallback(lines, text_blob)
 
     except Exception as e:
-        print("OCR ERROR:", str(e))
+        logger.error(f"OCR ERROR: {str(e)}", exc_info=True)
         return {"store_name": "Unknown", "items": [], "total": None, "date": None}

@@ -3,8 +3,11 @@ from __future__ import annotations
 import os
 import re
 import json
+import logging
 from groq import Groq
 from lib.db import execute_query
+
+logger = logging.getLogger(__name__)
 
 # Initialize the Groq client
 groq_key = os.environ.get("GROQ_API_KEY")
@@ -24,12 +27,14 @@ def resolve_unmatched_entity(raw_string: str) -> dict:
     # (e.g., '0,90 B', 'A', '1.49'), it's a floating tax code or price fragment. Kill it.
     letter_count = len(re.sub(r"[^A-Za-z]", "", raw_string))
     if len(raw_string.strip()) < 8 and letter_count <= 2:
-        print(f"🛡️ Python Regex Guard blocked junk fragment: '{raw_string}'")
+        logger.info(f"🛡️ Python Regex Guard blocked junk fragment: '{raw_string}'")
         return {"action": "skip"}
     # ------------------------------------------
 
     if not client:
-        print("⚠️ Groq API key missing from environment variables. Skipping AI layer.")
+        logger.warning(
+            "⚠️ Groq API key missing from environment variables. Skipping AI layer."
+        )
         return {"action": "skip"}
 
     # 1. Instruct the LLM using static examples rather than dumping the whole database table
@@ -110,9 +115,9 @@ def resolve_unmatched_entity(raw_string: str) -> dict:
                 "category": category,
             }
 
-        print(f"🤖 AI/Python Hybrid Decision for '{raw_string}': {decision}")
+        logger.info(f"🤖 AI/Python Hybrid Decision for '{raw_string}': {decision}")
         return decision
 
     except Exception as e:
-        print(f"Groq runtime resolution failure: {e}")
+        logger.error(f"Groq runtime resolution failure: {e}", exc_info=True)
         return {"action": "skip"}
