@@ -54,6 +54,7 @@ def resolve_unmatched_entity(raw_string: str) -> dict:
         "2. JUNK/FRAGMENT RULE: If the raw string contains no recognizable product description, consists only of numbers, or is a solitary tax letter... you MUST return an empty string for both fields to trigger a pipeline skip.\n\n"
         "3. STRIP SUPERMARKET BRAND JARGON: Completely remove retail tier prefixes, brand markers, and internal abbreviations from the final name (e.g., Strip 'JS', 'SSTC', 'SO', 'M', 'WM', 'HBR').\n"
         "4. HEAL OCR MUTATIONS: OCR engines frequently insert random spaces or misread characters in valid product names (e.g., 'A Imonds', '0live Snack'). You MUST heal these typographical errors and return the corrected, canonical word ('Almonds', 'Olive Snack') rather than returning an empty string to skip it."
+        "5. PRESERVE CORE NOUNS: Your job is to clean, not rewrite. If you encounter a mangled word (e.g., 'HuSHROOHS'), you may correct the spelling (e.g., 'Mushrooms'), but you MUST NEVER combine words or delete the primary descriptive noun (e.g., 'Button'). 'Button HuSHROOHS' must become 'Button Mushrooms', NOT 'Bushrooms'."
         "Examples of messy raw string translations:\n"
         "- 'JS STRAWBS 40OG' -> Cleaned: 'Strawberries 400g', Category: 'Fresh Produce'\n"
         "- 'Coca cola (original Taste) 1.75l' -> Cleaned: 'Coca-Cola Original Taste 1.75L', Category: 'Beverages'\n"
