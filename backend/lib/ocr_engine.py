@@ -319,16 +319,30 @@ def extract_receipt_data(file_bytes: bytes):
                 )
                 structured_data["total"] = calculated_total
             elif abs(float(extracted_total) - calculated_total) > 0.01:
-                if abs(float(extracted_total) - calculated_total) > 2.00:
+                deviation = abs(float(extracted_total) - calculated_total)
+                if deviation > 2.00:
                     if calculated_total > float(extracted_total):
+                        # The sum is higher. OCR likely missed a promotional discount or grabbed a gift card.
                         logger.error(
-                            f"🚨 MASSIVE deviation (Extracted: {extracted_total}, Calculated: {calculated_total}). LLM likely missed discounts or grabbed a gift card. Trusting extracted total."
+                            f"🚨 MASSIVE deviation (Extracted: {extracted_total}, Calculated: {calculated_total}). LLM likely missed discounts. Trusting extracted total."
                         )
-                    else:
+
+                    elif (
+                        float(extracted_total) > (calculated_total * 3)
+                        and calculated_total > 5.00
+                    ):
+                        # Catch massive OCR hallucinations on the total (e.g. misreading £11.65 as £111.65)
                         logger.error(
-                            f"🚨 MASSIVE deviation (Extracted: {extracted_total}, Calculated: {calculated_total}). Likely OCR failure on the Total. Trusting calculated sum."
+                            f"🚨 MASSIVE deviation (Extracted: {extracted_total}, Calculated: {calculated_total}). Extracted total is suspiciously large. Trusting calculated sum."
                         )
                         structured_data["total"] = calculated_total
+
+                    else:
+                        # The sum is lower. The OCR dropped item prices due to receipt layout/waviness.
+                        # Do NOT overwrite the correct printed total with a broken sum.
+                        logger.error(
+                            f"🚨 MASSIVE deviation (Extracted: {extracted_total}, Calculated: {calculated_total}). OCR dropped item prices. Trusting extracted total."
+                        )
                 else:
                     logger.warning(
                         f"⚠️ Arithmetic mismatch! Extracted: {extracted_total}, Calculated: {calculated_total}. Trusting extracted total."
