@@ -53,6 +53,7 @@ def resolve_unmatched_entity(raw_string: str) -> dict:
         "1. PREFIX CLEANING & SIZING: Strip store prefixes. Extract any weight or volume into the separate 'size_value' and 'size_unit' fields. DO NOT append the weight to the 'cleaned_name'.\n"
         "2. JUNK/FRAGMENT RULE: If the raw string contains no recognizable product description, consists only of numbers, or is a solitary tax letter... you MUST return an empty string for both fields to trigger a pipeline skip.\n\n"
         "3. STRIP SUPERMARKET BRAND JARGON: Completely remove retail tier prefixes, brand markers, and internal abbreviations from the final name (e.g., Strip 'JS', 'SSTC', 'SO', 'M', 'WM', 'HBR').\n"
+        "4. HEAL OCR MUTATIONS: OCR engines frequently insert random spaces or misread characters in valid product names (e.g., 'A Imonds', '0live Snack'). You MUST heal these typographical errors and return the corrected, canonical word ('Almonds', 'Olive Snack') rather than returning an empty string to skip it."
         "Examples of messy raw string translations:\n"
         "- 'JS STRAWBS 40OG' -> Cleaned: 'Strawberries 400g', Category: 'Fresh Produce'\n"
         "- 'Coca cola (original Taste) 1.75l' -> Cleaned: 'Coca-Cola Original Taste 1.75L', Category: 'Beverages'\n"

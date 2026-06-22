@@ -166,7 +166,7 @@ def extract_receipt_data_via_llm(text_blob: str) -> dict | None:
         "6. CRITICAL - QUANTITY MULTIPLIERS & LEADING INTEGERS: Look for inline multipliers (e.g., '5 x £1.75') OR leading standalone integers at the very start of a line (e.g., '2 M SPINACH' means quantity 2). You MUST extract the exact quantity AND completely remove that leading integer and any multiplier symbols from the final 'raw_string' output (e.g., output 'M SPINACH', not '2 M SPINACH').\n"
         "7. CRITICAL - EXTENDED TAX LETTERS & OCR MUTATIONS: UK supermarkets append tax letters (A, B, C, D, E, F, V, or *) to the far right. Ignore them. WARNING: OCR frequently misreads 'F' as '5' or '8', 'B' as '8', and 'A' as '4'. DISCARD THESE.\n"
         "8. CRITICAL - OCR NOISE & THE '8' MUTATION: OCR heavily misreads the '£' symbol as the number '8', leading to inflated prices (e.g., OCR reads '£5.50' as '85.50', or '£9.20' as '89.20'). Single grocery items rarely cost over £20. If you see a price starting with an 8 (e.g., 8X.XX), you MUST assume the leading '8' is a mangled '£' sign. Drop the '8' and extract the remaining float (e.g., '85.50' becomes 5.50, '89.20' becomes 9.20). Strip all other currency characters.\n"
-        "9. CRITICAL - DUAL PRICE COLUMNS (MORRISONS): Morrisons prints BOTH the Unit Price and the Line Total on the exact same row (e.g., '2 M SPINACH £2.25 £4.50'). If you see two prices on one line, you MUST extract the FIRST, smaller price (£2.25) as the base_price. Do NOT use the larger line total.\n"
+        "9. CRITICAL - DUAL PRICE COLUMNS & LINE TOTALS: If you see BOTH a Unit Price and a Line Total on the same row (e.g., '5 x £1.75 8.75'), you MUST extract the smaller unit price (£1.75) as the 'base_price', and the explicit final larger amount (£8.75) as the 'line_total'. Do NOT ignore the line total."
         "10. CRITICAL - TOTAL EXTRACTION vs PAYMENT METHODS: Extract the final net total cost of the basket. This is usually labeled 'BALANCE DUE', 'TOTAL', or 'AMOUNT DUE'. You MUST explicitly ignore any lines detailing how the customer paid (e.g., 'GIFT CARD', 'CASH', 'CREDIT/DEBIT', 'VISA', 'MASTERCARD'). Never extract a partial payment or tender amount as the total.\n"
         "11. CRITICAL - WEIGHED PRODUCE / MEAT UNITS: When loose produce or meat is sold by weight, the receipt will often span multiple lines, listing a weight or unit rate first, followed by the actual final price paid on the next line or on the extreme right (e.g., '0.450 kg @ £1.50/kg \n LOOSE BANANAS £0.68'). You MUST extract the actual final amount paid (£0.68) as the net base_price, and set the quantity strictly to 1. NEVER use the weight rate (£1.50) as the price.\n"
         "12. CRITICAL - VOIDS, CANCELLATIONS, & REFUNDS: If an item was scanned by mistake and subsequently removed by the cashier, it will appear with a 'VOID', 'LESS', or '-' prefix or suffix, alongside a negative value (e.g., 'VOID - JS LARGE GARLIC -£0.50'). You MUST match this voided line to the original positive entry above it and decrease that item's quantity or remove it entirely. NEVER output a standalone item with a negative base_price or a negative quantity.\n"
@@ -177,7 +177,7 @@ def extract_receipt_data_via_llm(text_blob: str) -> dict | None:
         '  "date": "2025-12-24",\n'
         '  "total": 11.00,\n'
         '  "items": [\n'
-        '    {"raw_string": "Spinach", "base_price": 2.25, "discount_applied": 0.50, "discount_type": "More Card", "quantity": 2}\n'
+        '    {"raw_string": "Spinach", "base_price": 2.25, "line_total": 4.50, "discount_applied": 0.50, "discount_type": "More Card", "quantity": 2}\n'
         "  ]\n"
         "}"
     )
@@ -275,11 +275,16 @@ def extract_receipt_data(file_bytes: bytes):
             # Calculate the true total using base prices minus discounts
             calculated_total = round(
                 sum(
-                    (
-                        float(item.get("base_price", item.get("unit_price", 0)))
-                        - float(item.get("discount_applied", 0))
+                    float(
+                        item.get(
+                            "line_total",
+                            (
+                                float(item.get("base_price", item.get("unit_price", 0)))
+                                - float(item.get("discount_applied", 0))
+                            )
+                            * int(item.get("quantity", 1)),
+                        )
                     )
-                    * int(item.get("quantity", 1))
                     for item in structured_data["items"]
                 ),
                 2,

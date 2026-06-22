@@ -274,6 +274,11 @@ def execute_receipt_ingestion_hash_upgraded(
         # ✅ FIXED: Extract the new loyalty-aware properties from the OCR engine
         unit_price = float(item.get("unit_price", 0))
         base_price = float(item.get("base_price", unit_price))
+
+        line_total_cost = float(
+            item.get("line_total", unit_price * int(item.get("quantity", 1)))
+        )
+
         loyalty_price = item.get("loyalty_price")
         if loyalty_price is not None:
             loyalty_price = float(loyalty_price)
@@ -324,7 +329,6 @@ def execute_receipt_ingestion_hash_upgraded(
         inserted_item_ids.append(master_item_id)
         new_prices.append(unit_price)
 
-        line_total_cost = unit_price * quantity
         execute_query(
             "INSERT INTO receipt_items (receipt_id, master_item_id, price) VALUES (%s, %s::uuid, %s);",
             (receipt_id, master_item_id, line_total_cost),
