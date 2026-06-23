@@ -5,7 +5,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, ArrowRight, TrendingDown, Loader2, Search, Plus, Minus, Trash2, ShoppingBasket, HelpCircle, Receipt, Lock, User, Mail, Sparkles, Check, ChevronDown, LogOut, Camera, ChevronRight, X, Info, Zap, ChevronUp, Database } from "lucide-react";
+import { AlertCircle, ArrowRight, TrendingDown, Loader2, Search, Plus, Minus, Trash2, ShoppingBasket, HelpCircle, Receipt, Lock, User, Mail, Sparkles, Check, ChevronDown, LogOut, Camera, ChevronRight, X, Info, Zap, ChevronUp, Database, Home } from "lucide-react";
 import SmartBasketPlusModal from '@/components/SmartBasketPlusModal';
 import imageCompression from 'browser-image-compression';
 
@@ -100,10 +100,10 @@ export default function Page() {
     if (cachedToken && cachedUser) { setToken(cachedToken); setActiveUser(cachedUser); }
   }, []);
 
-  // Cycle the scanning text every 2.2 seconds while uploading or polling
+  // Cycle the scanning text
   useEffect(() => {
     if (!uploading && !pollingReceiptId) {
-      setScanStep(0); // Reset when done
+      setScanStep(0);
       return;
     }
     const interval = setInterval(() => {
@@ -302,25 +302,16 @@ export default function Page() {
     if (!e.target.files || e.target.files.length === 0) return;
     
     setUploading(true);
-    setIsScannerMinimized(false); // Make sure overlay pops up
+    setIsScannerMinimized(false); 
     
     try {
       const originalFile = e.target.files[0];
-      
-      const options = {
-        maxSizeMB: 1,
-        maxWidthOrHeight: 1600,
-        useWebWorker: true
-      };
+      const options = { maxSizeMB: 1, maxWidthOrHeight: 1600, useWebWorker: true };
       const compressedFile = await imageCompression(originalFile, options);
-
-      console.log(`Original Size: ${(originalFile.size / 1024 / 1024).toFixed(2)} MB`);
-      console.log(`Compressed Size: ${(compressedFile.size / 1024 / 1024).toFixed(2)} MB`);
 
       if (compressedFile.size > 4 * 1024 * 1024) {
           showToast("Compression failed: File is still too large.", "error");
-          setUploading(false);
-          return;
+          setUploading(false); return;
       }
 
       const arrayBuffer = await originalFile.arrayBuffer();
@@ -336,27 +327,12 @@ export default function Page() {
       const res = await fetch(`${API_BASE}/api/receipts/upload`, { method: "POST", headers, body: formData });
       const data = await res.json();
       
-      if (!res.ok) {
-        showToast(data.detail || "Couldn't upload the receipt.", "error");
-        setUploading(false);
-      } else if (data.cached) {
-        showToast("Duplicate receipt.", "cached");
-        setUploading(false);
-      } else if (data.receipt_id) {
-        showToast("Receipt queued! Analyzing in background...", "info");
-        setPollingReceiptId(data.receipt_id); 
-        // We do NOT set uploading(false) here, so the spinner continues while polling
-      } else {
-        showToast("Uploaded successfully.", "success");
-        setUploading(false);
-        refreshDashboardMetrics();
-      }
-    } catch (error) { 
-        showToast("Upload failed.", "error"); 
-        setUploading(false); 
-    } finally { 
-        e.target.value = ""; 
-    }
+      if (!res.ok) { showToast(data.detail || "Couldn't upload the receipt.", "error"); setUploading(false); } 
+      else if (data.cached) { showToast("Duplicate receipt.", "cached"); setUploading(false); } 
+      else if (data.receipt_id) { showToast("Receipt queued! Analyzing in background...", "info"); setPollingReceiptId(data.receipt_id); } 
+      else { showToast("Uploaded successfully.", "success"); setUploading(false); refreshDashboardMetrics(); }
+    } catch (error) { showToast("Upload failed.", "error"); setUploading(false); } 
+    finally { e.target.value = ""; }
   };
 
   const getCheapestPrice = (prices: Record<string, BasketItemPrice | null>) => {
@@ -372,17 +348,10 @@ export default function Page() {
     try {
       const fetchHeaders: HeadersInit = token ? { "Authorization": `Bearer ${token}` } : {};
       const res = await fetch(`${API_BASE}/api/receipts/${id}`, { headers: fetchHeaders });
-      if (res.ok) {
-        const data = await res.json();
-        setViewReceipt(data);
-      } else {
-        showToast("Couldn't load that receipt. Please try again.", "error");
-      }
-    } catch (e) {
-      showToast("Network error loading receipt.", "error");
-    } finally {
-      setLoadingReceipt(null);
-    }
+      if (res.ok) { const data = await res.json(); setViewReceipt(data); } 
+      else { showToast("Couldn't load that receipt. Please try again.", "error"); }
+    } catch (e) { showToast("Network error loading receipt.", "error"); } 
+    finally { setLoadingReceipt(null); }
   }
 
   if (loading)
@@ -395,20 +364,22 @@ export default function Page() {
   const displayedCatalogItems = searchQuery.trim().length >= 2 ? searchResults : catalogItems;
 
   return (
-    <main className="min-h-screen w-full bg-[#F9FAFB] font-sans text-slate-900 pb-24 selection:bg-emerald-100 selection:text-emerald-900">
+    // Dynamic bottom padding to ensure content isn't hidden behind the mobile nav bar
+    <main className="min-h-screen w-full bg-[#F9FAFB] font-sans text-slate-900 pb-32 md:pb-24 selection:bg-emerald-100 selection:text-emerald-900">
       
-      {/* 1. NAVIGATION (UX ALIGNED) */}
+      {/* 1. NAVIGATION (MOBILE OPTIMIZED) */}
       <nav className="sticky top-0 z-40 bg-[#F9FAFB]/80 backdrop-blur-xl border-b border-slate-200/50">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-slate-900 flex items-center justify-center shadow-sm">
+              <div className="w-8 h-8 rounded-xl bg-slate-900 flex items-center justify-center shadow-sm shrink-0">
                 <ShoppingBasket className="w-4 h-4 text-white" />
               </div>
-              <span className="font-bold tracking-tight text-lg hidden sm:block">SmartBasket</span>
+              <span className="font-bold tracking-tight text-lg">SmartBasket</span>
             </div>
             
-            <div className="flex items-center gap-1 bg-slate-200/40 p-1 rounded-full">
+            {/* Desktop Tabs (Hidden on mobile) */}
+            <div className="hidden md:flex items-center gap-1 bg-slate-200/40 p-1 rounded-full">
               <button onClick={() => setActiveTab("dashboard")} className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${activeTab === "dashboard" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"}`}>Home</button>
               <button onClick={() => setActiveTab("catalog")} className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${activeTab === "catalog" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"}`}>Browse Items</button>
             </div>
@@ -422,20 +393,14 @@ export default function Page() {
             {token ? (
               <div>
                 <button onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)} className="flex items-center gap-2 hover:bg-slate-100 p-1.5 pr-3 rounded-full transition-colors">
-                  <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">{activeUser?.charAt(0).toUpperCase()}</div>
+                  <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs shrink-0">{activeUser?.charAt(0).toUpperCase()}</div>
                   <ChevronDown className="w-4 h-4 text-slate-400" />
                 </button>
                 {isProfileMenuOpen && (
                   <div className="absolute right-0 top-12 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2">
-                    <div className="px-4 py-2 border-b border-slate-50 mb-2">
-                      <p className="text-sm font-semibold truncate">{activeUser}</p>
-                    </div>
-                    <button onClick={() => setIsPremiumModalOpen(true)} className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-amber-600 flex items-center gap-2">
-                      <Sparkles className="w-4 h-4" /> SmartBasket+
-                    </button>
-                    <button onClick={handleLogout} className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-rose-50 hover:text-rose-600 flex items-center gap-2">
-                      <LogOut className="w-4 h-4" /> Sign Out
-                    </button>
+                    <div className="px-4 py-2 border-b border-slate-50 mb-2"><p className="text-sm font-semibold truncate">{activeUser}</p></div>
+                    <button onClick={() => setIsPremiumModalOpen(true)} className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-amber-600 flex items-center gap-2"><Sparkles className="w-4 h-4" /> SmartBasket+</button>
+                    <button onClick={handleLogout} className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-rose-50 hover:text-rose-600 flex items-center gap-2"><LogOut className="w-4 h-4" /> Sign Out</button>
                   </div>
                 )}
               </div>
@@ -446,72 +411,42 @@ export default function Page() {
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-8 space-y-12">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-6 sm:pt-8 space-y-10 sm:space-y-12">
         
-        {/* CAROUSEL (DEJARGONIZED COPY) */}
+        {/* CAROUSEL */}
         <section className="relative">
           <div className="flex items-center gap-2 mb-3 px-1">
-            <Sparkles className="w-4 h-4 text-amber-500" />
-            <h2 className="text-sm font-bold text-slate-600 uppercase tracking-wider">
-              {token ? "Today's Best Deals" : "Community Deals"}
-            </h2>
+            <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+            <h2 className="text-sm font-bold text-slate-600 uppercase tracking-wider">{token ? "Today's Best Deals" : "Community Deals"}</h2>
           </div>
           
           {alerts.length > 0 ? (
             <>
-              <div 
-                ref={carouselRef} 
-                onMouseEnter={() => setIsCarouselPaused(true)} 
-                onMouseLeave={() => setIsCarouselPaused(false)} 
-                onTouchStart={() => setIsCarouselPaused(true)} 
-                onTouchEnd={() => setIsCarouselPaused(false)} 
-                className={`flex gap-3 pb-4 [&::-webkit-scrollbar]:hidden ${alerts.length >= 4 ? 'overflow-x-hidden' : 'overflow-x-auto'}`}
-              >
+              <div ref={carouselRef} onMouseEnter={() => setIsCarouselPaused(true)} onMouseLeave={() => setIsCarouselPaused(false)} onTouchStart={() => setIsCarouselPaused(true)} onTouchEnd={() => setIsCarouselPaused(false)} className={`flex gap-3 pb-4 [&::-webkit-scrollbar]:hidden ${alerts.length >= 4 ? 'overflow-x-hidden' : 'overflow-x-auto'}`}>
                 {(alerts.length >= 4 ? [...alerts, ...alerts] : alerts).map((alert, index) => (
-                  <div 
-                    key={index} 
-                    className="shrink-0 w-[260px] bg-white border border-slate-200/60 rounded-2xl p-4 shadow-sm flex flex-col gap-1"
-                  >
+                  <div key={index} className="shrink-0 w-[240px] sm:w-[260px] bg-white border border-slate-200/60 rounded-2xl p-4 shadow-sm flex flex-col gap-1">
                     <p className="font-semibold text-slate-900 text-sm truncate">{alert.item_name}</p>
-                    <div className="text-sm font-bold text-emerald-600 flex items-center gap-1 mt-1">
-                      Save £{alert.potential_savings.toFixed(2)}
-                      <span className="text-xs text-slate-500 font-medium ml-1">at {alert.cheaper_store}</span>
-                    </div>
+                    <div className="text-sm font-bold text-emerald-600 flex items-center gap-1 mt-1">Save £{alert.potential_savings.toFixed(2)}<span className="text-xs text-slate-500 font-medium ml-1">at {alert.cheaper_store}</span></div>
                   </div>
                 ))}
               </div>
               <div className="absolute right-0 top-8 bottom-4 w-12 bg-gradient-to-l from-[#F9FAFB] to-transparent pointer-events-none z-10" />
             </>
           ) : (
-            <div className="bg-white border border-slate-200/60 border-dashed rounded-3xl p-6 text-center shadow-sm max-w-2xl">
+            <div className="bg-white border border-slate-200/60 border-dashed rounded-3xl p-6 text-center shadow-sm max-w-2xl mx-auto md:mx-0">
               {token ? (
                 basketItems.length === 0 ? (
                   <div className="flex flex-col items-center justify-center space-y-3">
-                    <div className="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center">
-                      <Sparkles className="w-5 h-5 text-emerald-500" />
-                    </div>
+                    <div className="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center"><Sparkles className="w-5 h-5 text-emerald-500" /></div>
                     <h3 className="text-sm font-bold text-slate-800">Start Saving Money</h3>
-                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                      Add some items to your basket and we'll help you find the cheapest places to shop.
-                    </p>
-                    <Button 
-                      size="sm" 
-                      onClick={() => setActiveTab("catalog")} 
-                      className="bg-slate-900 hover:bg-slate-800 text-white rounded-full font-semibold px-6 mt-2"
-                    >
-                      Browse Items
-                    </Button>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto">Add some items to your basket and we'll help you find the cheapest places to shop.</p>
+                    <Button size="sm" onClick={() => setActiveTab("catalog")} className="bg-slate-900 hover:bg-slate-800 text-white rounded-full font-semibold px-6 mt-2">Browse Items</Button>
                   </div>
                 ) : (
-                  <div className="py-4">
-                    <p className="text-sm font-bold text-slate-700">You're getting the best possible prices!</p>
-                    <p className="text-xs text-slate-500 mt-1">Check back later for more deals.</p>
-                  </div>
+                  <div className="py-4"><p className="text-sm font-bold text-slate-700">You're getting the best possible prices!</p><p className="text-xs text-slate-500 mt-1">Check back later for more deals.</p></div>
                 )
               ) : (
-                <div className="py-4">
-                  <p className="text-sm text-slate-500">No community deals spotted right now. Check back soon!</p>
-                </div>
+                <div className="py-4"><p className="text-sm text-slate-500">No community deals spotted right now. Check back soon!</p></div>
               )}
             </div>
           )}
@@ -519,53 +454,38 @@ export default function Page() {
 
         {/* DASHBOARD COMPONENT TREE */}
         {activeTab === "dashboard" && token && (
-          <div className="relative space-y-12 animate-in fade-in duration-500">
+          <div className="relative space-y-10 sm:space-y-12 animate-in fade-in duration-500">
 
             {/* REAL-TIME NOTIFICATION CONTAINER */}
             {liveDropAlert && (
-              <div className="fixed top-24 right-4 sm:right-6 z-[100] w-[calc(100%-2rem)] sm:w-full max-w-md bg-white rounded-3xl border border-slate-100 shadow-[0_20px_50px_rgba(0,0,0,0.12)] p-4 sm:p-5 animate-in slide-in-from-top-6 slide-in-from-right-6 fade-in duration-500">
+              <div className="fixed top-20 sm:top-24 right-4 left-4 sm:left-auto sm:right-6 z-[100] sm:w-full max-w-md bg-white rounded-3xl border border-slate-100 shadow-[0_20px_50px_rgba(0,0,0,0.12)] p-4 sm:p-5 animate-in slide-in-from-top-6 fade-in duration-500">
                 <div className="flex flex-col gap-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center shrink-0 animate-pulse">
-                        <Zap className="w-5 h-5 text-emerald-600" />
-                      </div>
-                      <div>
-                        <h3 className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-0.5">Good News! We Found a Better Price</h3>
-                        <p className="text-slate-800 font-bold text-sm leading-tight max-w-[280px]">{liveDropAlert}</p>
-                      </div>
+                      <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center shrink-0 animate-pulse"><Zap className="w-5 h-5 text-emerald-600" /></div>
+                      <div><h3 className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-0.5">Good News! We Found a Better Price</h3><p className="text-slate-800 font-bold text-sm leading-tight max-w-[280px]">{liveDropAlert}</p></div>
                     </div>
-                    <button onClick={() => setLiveDropAlert(null)} className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-full transition-colors shrink-0">
-                      <X className="w-4 h-4" />
-                    </button>
+                    <button onClick={() => setLiveDropAlert(null)} className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-full transition-colors shrink-0"><X className="w-4 h-4" /></button>
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" onClick={() => { document.getElementById('shopping-plan')?.scrollIntoView({ behavior: 'smooth' }); setLiveDropAlert(null); }} className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-full font-semibold text-xs py-4 shadow-sm">
-                      See Savings
-                    </Button>
+                    <Button size="sm" onClick={() => { document.getElementById('shopping-plan')?.scrollIntoView({ behavior: 'smooth' }); setLiveDropAlert(null); }} className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-full font-semibold text-xs py-4 shadow-sm">See Savings</Button>
                   </div>
                 </div>
               </div>
             )}
             
-            {/* 2. HERO SECTION */}
+            {/* 2. HERO SECTION (Responsive padding & text) */}
             {optimizedSplit && optimizedSplit.net_savings > 0 && (
-              <section className="bg-white rounded-[32px] p-8 sm:p-12 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden">
+              <section className="bg-white rounded-[32px] p-6 sm:p-12 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col md:flex-row items-center justify-between gap-6 sm:gap-8 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-50 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
                 <div className="space-y-1 z-10 text-center md:text-left w-full md:w-auto">
                   <p className="font-semibold text-slate-500 tracking-wide uppercase text-sm">You could save today</p>
-                  <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tighter text-emerald-600">
-                    £{optimizedSplit.net_savings.toFixed(2)}
-                  </h1>
+                  <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tighter text-emerald-600">£{optimizedSplit.net_savings.toFixed(2)}</h1>
                 </div>
                 
                 <div className="flex flex-col gap-3 z-10 w-full md:w-auto min-w-[240px]">
-                  <Button className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-xl py-6 font-semibold text-base shadow-lg" onClick={() => document.getElementById('shopping-plan')?.scrollIntoView({ behavior: 'smooth' })}>
-                    See My Shopping Plan
-                  </Button>
-                  <Button variant="outline" className="w-full rounded-xl py-6 font-semibold text-base" onClick={() => setActiveTab("catalog")}>
-                    Browse Items
-                  </Button>
+                  <Button className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-xl py-6 font-semibold text-base shadow-lg" onClick={() => document.getElementById('shopping-plan')?.scrollIntoView({ behavior: 'smooth' })}>See My Shopping Plan</Button>
+                  <Button variant="outline" className="w-full rounded-xl py-6 font-semibold text-base" onClick={() => setActiveTab("catalog")}>Browse Items</Button>
                 </div>
               </section>
             )}
@@ -573,15 +493,11 @@ export default function Page() {
             {/* 3. SHOPPING PLAN CONTAINER */}
             {optimizedSplit && (
               <section id="shopping-plan" className="space-y-6 scroll-mt-24">
-                <div className="flex justify-between items-end">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-2">
                   <h2 className="text-2xl font-bold tracking-tight text-slate-900">Best Shopping Plan</h2>
-                  {optimizedSplit.net_savings === 0 && (
-                    <span className="text-sm font-semibold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
-                      One-Store Option
-                    </span>
-                  )}
+                  {optimizedSplit.net_savings === 0 && <span className="text-sm font-semibold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full self-start sm:self-auto">One-Store Option</span>}
                 </div>
-                <div className="grid md:grid-cols-2 gap-6">
+                <div className="grid md:grid-cols-2 gap-4 sm:gap-6">
                   {(() => {
                     const groupedAllocations = optimizedSplit.allocations.reduce((acc: any, alloc: any) => {
                       const store = alloc.allocated_store || "Unknown";
@@ -593,7 +509,7 @@ export default function Page() {
                     return Object.entries(groupedAllocations).map(([storeName, items]: [string, any]) => {
                       const storeTotal = items.reduce((sum: number, item: any) => sum + item.total_cost, 0);
                       return (
-                        <div key={storeName} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/50 flex flex-col justify-between">
+                        <div key={storeName} className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200/50 flex flex-col justify-between">
                           <div>
                             <div className="flex justify-between items-end mb-2">
                               <h3 className="text-lg font-bold text-slate-900">{storeName}</h3>
@@ -605,9 +521,7 @@ export default function Page() {
                               {items.map((alloc: any, idx: number) => (
                                 <div key={idx} className="flex justify-between items-center text-sm font-medium text-slate-700 bg-slate-50 rounded-xl px-4 py-3 mr-1">
                                   <div className="flex items-center gap-3 max-w-[70%]">
-                                    <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
-                                      <Check className="w-3 h-3 text-emerald-600" />
-                                    </div>
+                                    <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center shrink-0"><Check className="w-3 h-3 text-emerald-600" /></div>
                                     <span className="truncate">{alloc.item_name}</span>
                                   </div>
                                   <span className="shrink-0 font-semibold text-slate-900">£{alloc.total_cost.toFixed(2)}</span>
@@ -627,7 +541,7 @@ export default function Page() {
             <section className="space-y-6">
               <h2 className="text-2xl font-bold tracking-tight text-slate-900">Your Basket</h2>
               {basketItems.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200">
+                <div className="text-center py-16 sm:py-20 bg-white rounded-3xl border border-dashed border-slate-200 px-4">
                   <ShoppingBasket className="w-12 h-12 text-slate-300 mx-auto mb-4" />
                   <h3 className="text-lg font-semibold text-slate-700">Basket is empty</h3>
                   <p className="text-slate-400 text-sm mt-1 mb-6">Add some items to your basket and we'll help you find the cheapest places to shop.</p>
@@ -645,27 +559,28 @@ export default function Page() {
                             <h3 className="font-bold text-slate-900 text-base leading-tight">{item.name}</h3>
                             <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">{item.category}</span>
                           </div>
-                          <button onClick={() => handleModifyQuantity(item.id, item.quantity, "delete")} className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-500 rounded-lg transition-all shrink-0">
+                          <button onClick={() => handleModifyQuantity(item.id, item.quantity, "delete")} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-2 text-slate-300 hover:bg-rose-50 hover:text-rose-500 rounded-lg transition-all shrink-0">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
 
                         <div className="flex items-center gap-3 mb-4">
+                          {/* Expanded touch targets for +/- buttons */}
                           <div className="flex items-center bg-slate-50 rounded-lg border border-slate-100 p-0.5">
-                            <button onClick={() => handleModifyQuantity(item.id, item.quantity, "decrement")} className="p-1.5 text-slate-400 hover:text-slate-900"><Minus className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => handleModifyQuantity(item.id, item.quantity, "decrement")} className="p-2 text-slate-400 hover:text-slate-900"><Minus className="w-4 h-4" /></button>
                             <span className="w-6 text-center font-semibold text-sm">{item.quantity}</span>
-                            <button onClick={() => handleModifyQuantity(item.id, item.quantity, "increment")} className="p-1.5 text-slate-400 hover:text-slate-900"><Plus className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => handleModifyQuantity(item.id, item.quantity, "increment")} className="p-2 text-slate-400 hover:text-slate-900"><Plus className="w-4 h-4" /></button>
                           </div>
                           {minPrice !== null && (
-                            <div className="flex flex-col">
-                              <span className="text-[10px] font-semibold text-emerald-600 uppercase">Best Price</span>
-                              <span className="font-bold text-slate-900 text-lg">£{(minPrice * item.quantity).toFixed(2)} <span className="text-xs text-slate-400 font-medium font-sans">@ {bestStore}</span></span>
+                            <div className="flex flex-col ml-auto">
+                              <span className="text-[10px] font-semibold text-emerald-600 uppercase text-right">Best Price</span>
+                              <span className="font-bold text-slate-900 text-lg text-right">£{(minPrice * item.quantity).toFixed(2)} <span className="text-xs text-slate-400 font-medium font-sans">@ {bestStore}</span></span>
                             </div>
                           )}
                         </div>
 
                         <details className="mt-auto pt-4 border-t border-slate-50 group/details">
-                          <summary className="text-xs font-semibold text-slate-500 cursor-pointer list-none flex items-center justify-between hover:text-slate-700 transition-colors">
+                          <summary className="text-xs font-semibold text-slate-500 cursor-pointer list-none flex items-center justify-between hover:text-slate-700 transition-colors py-1">
                             Compare prices
                             <ChevronDown className="w-3.5 h-3.5 group-open/details:rotate-180 transition-transform" />
                           </summary>
@@ -692,10 +607,7 @@ export default function Page() {
 
             {/* 5. ADVANCED SYSTEM MODAL OVERLAY WRAPPER */}
             <section className="pt-8 border-t border-slate-200/60">
-              <button 
-                onClick={() => setShowAdvancedInsights(!showAdvancedInsights)}
-                className="flex items-center justify-between w-full p-4 bg-white rounded-2xl border border-slate-200/60 hover:bg-slate-50 transition-colors"
-              >
+              <button onClick={() => setShowAdvancedInsights(!showAdvancedInsights)} className="flex items-center justify-between w-full p-4 bg-white rounded-2xl border border-slate-200/60 hover:bg-slate-50 transition-colors">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-slate-100 rounded-xl text-slate-600"><Info className="w-4 h-4" /></div>
                   <span className="font-semibold text-slate-800 text-sm">More Details & Recent Receipts</span>
@@ -705,33 +617,9 @@ export default function Page() {
 
               {showAdvancedInsights && (
                 <div className="space-y-6 mt-6 animate-in fade-in slide-in-from-top-4">
-                  
-                  {/* HACKATHON EVALUATION BADGE ROW */}
-                  <div className="bg-slate-900 text-slate-100 rounded-3xl p-6 border border-slate-800 shadow-xl grid md:grid-cols-2 gap-6 items-center">
-                    <div>
-                      <div className="flex items-center gap-2 mb-2 text-amber-400 font-bold text-xs uppercase tracking-widest">
-                        <Database className="w-4 h-4" /> Hackathon Evaluation Panel
-                      </div>
-                      <h4 className="text-lg font-bold text-white">AWS Backend Integration Details</h4>
-                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                        This application operates fully full-stack using Next.js hosted at the edge, pushing calculations to low-latency tables.
-                      </p>
-                    </div>
-                    <div className="space-y-2 text-xs">
-                      <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex justify-between items-center">
-                        <span className="text-slate-400 font-medium">Core Primary Database</span>
-                        <span className="font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">AWS Aurora PostgreSQL</span>
-                      </div>
-                      <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex justify-between items-center">
-                        <span className="text-slate-400 font-medium">Edge Deployment Layer</span>
-                        <span className="font-mono text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">Vercel Web Framework</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-6">
+                  <div className="grid md:grid-cols-2 gap-4 sm:gap-6">
                     {basketOptions.length > 0 && (
-                      <div className="bg-white rounded-3xl p-6 border border-slate-200/60 shadow-sm flex flex-col max-h-[300px]">
+                      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/60 shadow-sm flex flex-col max-h-[300px]">
                         <h3 className="font-bold text-slate-800 mb-4">Compare Store Prices</h3>
                         <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar">
                           {basketOptions.map((option, index) => {
@@ -739,13 +627,8 @@ export default function Page() {
                             return (
                               <div key={option.store_name} className="flex justify-between items-center p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition-colors">
                                 <div className="flex items-center gap-3">
-                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${index === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
-                                    {index + 1}
-                                  </div>
-                                  <div>
-                                    <p className="font-bold text-slate-900 text-sm">{option.store_name}</p>
-                                    <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{option.items_counted} of {basketItems.length} items found</p>
-                                  </div>
+                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${index === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>{index + 1}</div>
+                                  <div><p className="font-bold text-slate-900 text-sm">{option.store_name}</p><p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{option.items_counted} of {basketItems.length} items found</p></div>
                                 </div>
                                 <div className="text-right">
                                   <span className="block font-bold text-slate-700">£{option.total_cost.toFixed(2)}</span>
@@ -759,15 +642,12 @@ export default function Page() {
                     )}
 
                     {receiptsHistory.length > 0 && (
-                      <div className="bg-white rounded-3xl p-6 border border-slate-200/60 shadow-sm">
+                      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/60 shadow-sm">
                         <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Receipt className="w-4 h-4 text-slate-400" /> Recent Receipts</h3>
                         <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2">
                           {receiptsHistory.map(receipt => (
                             <div key={receipt.id} onClick={() => handleViewReceipt(receipt.id)} className="flex justify-between items-center p-3 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-100 transition-all">
-                              <div>
-                                <p className="font-semibold text-sm text-slate-800">{receipt.store_name}</p>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{receipt.date}</p>
-                              </div>
+                              <div><p className="font-semibold text-sm text-slate-800">{receipt.store_name}</p><p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{receipt.date}</p></div>
                               <span className="font-bold text-slate-600">£{receipt.total_spent.toFixed(2)}</span>
                             </div>
                           ))}
@@ -784,7 +664,7 @@ export default function Page() {
         {/* CATALOGUE CONTROLS */}
         {activeTab === "catalog" && (
            <div className="space-y-6 animate-in fade-in duration-500">
-             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8">
                <div>
                  <h2 className="text-2xl font-bold tracking-tight text-slate-900">Browse Items</h2>
                  <p className="text-sm text-slate-500">Search for items to add to your list.</p>
@@ -802,24 +682,24 @@ export default function Page() {
                     const isExpanded = expandedItemId === item.id;
                     return (
                       <div key={item.id} className="group">
-                        <div onClick={() => handleRowToggle(item.id)} className="flex items-center justify-between p-4 hover:bg-slate-50 cursor-pointer transition-colors">
-                          <div className="flex items-center gap-4">
-                            <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                            <div>
-                              <p className="font-semibold text-slate-900">{item.canonical_name}</p>
+                        <div onClick={() => handleRowToggle(item.id)} className="flex items-center justify-between p-4 sm:p-5 hover:bg-slate-50 cursor-pointer transition-colors">
+                          <div className="flex items-center gap-3 sm:gap-4 max-w-[65%] sm:max-w-none">
+                            <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`} />
+                            <div className="truncate">
+                              <p className="font-semibold text-slate-900 truncate">{item.canonical_name}</p>
                               <div className="flex items-center gap-2 mt-1">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{item.category}</span>
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-semibold">{item.variant_count} stores</span>
                               </div>
                             </div>
                           </div>
-                          <Button size="sm" variant={existingQty > 0 ? "secondary" : "default"} onClick={(e) => { e.stopPropagation(); handleAddItem(item.id); }} disabled={actionId !== null} className={`rounded-full px-4 font-semibold text-xs ${existingQty > 0 ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-slate-900 text-white'}`}>
-                            {actionId === item.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : existingQty > 0 ? <span className="flex items-center gap-1"><Check className="w-3 h-3" /> Added ({existingQty})</span> : <span className="flex items-center gap-1"><Plus className="w-3 h-3" /> Add</span>}
+                          <Button size="sm" variant={existingQty > 0 ? "secondary" : "default"} onClick={(e) => { e.stopPropagation(); handleAddItem(item.id); }} disabled={actionId !== null} className={`rounded-full px-4 py-2 font-semibold text-xs shrink-0 ${existingQty > 0 ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-slate-900 text-white'}`}>
+                            {actionId === item.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : existingQty > 0 ? <span className="flex items-center gap-1"><Check className="w-3 h-3" /> <span className="hidden sm:inline">Added</span> ({existingQty})</span> : <span className="flex items-center gap-1"><Plus className="w-3 h-3" /> Add</span>}
                           </Button>
                         </div>
                         
                         {isExpanded && (
-                          <div className="bg-slate-50/50 p-6 border-t border-slate-100 text-sm">
+                          <div className="bg-slate-50/50 p-4 sm:p-6 border-t border-slate-100 text-sm">
                             {loadingVariants ? <div className="text-slate-400 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin"/> Loading prices...</div> : itemVariants.length === 0 ? <p className="text-slate-400">No cross-store data.</p> : (
                               <div className="grid gap-2 max-w-md">
                                 {itemVariants.map((v, i) => (
@@ -843,15 +723,27 @@ export default function Page() {
 
         {/* OUTSIDE SESSION LANDING INDEX */}
         {!token && activeTab === "dashboard" && (
-          <div className="py-32 text-center animate-in fade-in duration-500 max-w-lg mx-auto">
+          <div className="py-20 sm:py-32 text-center animate-in fade-in duration-500 max-w-lg mx-auto px-4">
             <div className="w-20 h-20 bg-white rounded-3xl shadow-sm border border-slate-100 flex items-center justify-center mx-auto mb-6 transform rotate-3">
               <ShoppingBasket className="w-8 h-8 text-emerald-600" />
             </div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 mb-4">Shop smarter, not harder.</h1>
-            <p className="text-slate-500 mb-8 text-lg">SmartBasket compares grocery prices across top UK supermarkets to build you the perfect, money-saving shopping route.</p>
+            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900 mb-4 leading-tight">Shop smarter,<br className="sm:hidden" /> not harder.</h1>
+            <p className="text-slate-500 mb-8 text-base sm:text-lg px-2">SmartBasket compares grocery prices across top UK supermarkets to build you the perfect, money-saving shopping route.</p>
             <Button onClick={() => setShowAuthModal(true)} className="bg-slate-900 hover:bg-slate-800 text-white rounded-full px-8 py-6 font-semibold text-lg shadow-xl shadow-slate-900/10 transition-transform active:scale-95">Get Started</Button>
           </div>
         )}
+      </div>
+
+      {/* MOBILE BOTTOM NAVIGATION */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200/60 pb-safe z-40 flex items-center justify-around px-2 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
+        <button onClick={() => setActiveTab("dashboard")} className={`flex flex-col items-center gap-1 p-2 w-20 transition-colors ${activeTab === "dashboard" ? "text-emerald-600" : "text-slate-400 hover:text-slate-600"}`}>
+           <Home className="w-5 h-5" />
+           <span className="text-[10px] font-bold">Home</span>
+        </button>
+        <button onClick={() => setActiveTab("catalog")} className={`flex flex-col items-center gap-1 p-2 w-20 transition-colors ${activeTab === "catalog" ? "text-emerald-600" : "text-slate-400 hover:text-slate-600"}`}>
+           <Search className="w-5 h-5" />
+           <span className="text-[10px] font-bold">Browse</span>
+        </button>
       </div>
 
       {/* FLOATING ACTION SCAN TRIGGER & BACKGROUND INDICATOR */}
@@ -859,30 +751,15 @@ export default function Page() {
         <>
           <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleReceiptUpload} />
           <button 
-            onClick={() => {
-              if (uploading || pollingReceiptId) {
-                setIsScannerMinimized(false);
-              } else {
-                fileInputRef.current?.click();
-              }
-            }}
-            className={`fixed bottom-8 right-8 z-40 text-white px-5 py-4 rounded-full font-bold text-sm flex items-center gap-2 transition-all duration-300 shadow-lg group
-              ${(uploading || pollingReceiptId) 
-                ? "bg-slate-900 hover:bg-slate-800 animate-pulse shadow-[0_8px_30px_rgb(0,0,0,0.2)]" 
-                : "bg-emerald-600 hover:bg-emerald-700 hover:scale-105 active:scale-95 shadow-[0_8px_30px_rgb(16,185,129,0.3)]"
-              }
+            onClick={() => { if (uploading || pollingReceiptId) { setIsScannerMinimized(false); } else { fileInputRef.current?.click(); } }}
+            className={`fixed bottom-24 md:bottom-8 right-4 md:right-8 z-40 text-white px-5 py-4 rounded-full font-bold text-sm flex items-center gap-2 transition-all duration-300 shadow-lg group
+              ${(uploading || pollingReceiptId) ? "bg-slate-900 hover:bg-slate-800 animate-pulse shadow-[0_8px_30px_rgb(0,0,0,0.2)]" : "bg-emerald-600 hover:bg-emerald-700 hover:scale-105 active:scale-95 shadow-[0_8px_30px_rgb(16,185,129,0.3)]"}
             `}
           >
             {(uploading || pollingReceiptId) ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span className="hidden sm:block">Processing in background...</span>
-              </>
+              <><Loader2 className="w-5 h-5 animate-spin" /><span className="hidden md:block">Processing in background...</span></>
             ) : (
-              <>
-                <Camera className="w-5 h-5 group-hover:-rotate-12 transition-transform" />
-                <span className="hidden sm:block">Scan Receipt</span>
-              </>
+              <><Camera className="w-5 h-5 group-hover:-rotate-12 transition-transform" /><span className="hidden md:block">Scan Receipt</span></>
             )}
           </button>
         </>
@@ -891,17 +768,15 @@ export default function Page() {
       {/* OVERLAY RENDER MODALS */}
       {showAuthModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="w-full max-w-md bg-white rounded-[32px] shadow-2xl p-8 relative">
-            <button onClick={() => setShowAuthModal(false)} className="absolute right-6 top-6 text-slate-400 hover:bg-slate-100 p-2 rounded-full"><X className="w-5 h-5"/></button>
+          <div className="w-full max-w-md bg-white rounded-[32px] shadow-2xl p-6 sm:p-8 relative">
+            <button onClick={() => setShowAuthModal(false)} className="absolute right-4 sm:right-6 top-4 sm:top-6 text-slate-400 hover:bg-slate-100 p-2 rounded-full"><X className="w-5 h-5"/></button>
             <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center mb-6"><Lock className="w-5 h-5 text-emerald-600"/></div>
             <h2 className="text-2xl font-extrabold text-slate-900 mb-2">{isAuthRegister ? "Create account" : "Welcome back"}</h2>
             <p className="text-slate-500 text-sm mb-8">{isAuthRegister ? "Start tracking prices and saving money today." : "Sign in to access your custom shopping plans."}</p>
             <form onSubmit={handleAuthSubmission} className="space-y-4">
               {authModalError && <div className="p-3 bg-rose-50 text-rose-600 rounded-xl text-xs font-semibold">{authModalError}</div>}
               <input type="text" placeholder="Username" value={authUsername} onChange={e => {setAuthUsername(e.target.value); setFieldErrors({});}} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-slate-900" />
-              {isAuthRegister && (
-                <input type="email" placeholder="Email" value={authEmail} onChange={e => {setAuthEmail(e.target.value); setFieldErrors({});}} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-slate-900" />
-              )}
+              {isAuthRegister && ( <input type="email" placeholder="Email" value={authEmail} onChange={e => {setAuthEmail(e.target.value); setFieldErrors({});}} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-slate-900" /> )}
               <input type="password" placeholder="Password" value={authPassword} onChange={e => {setAuthPassword(e.target.value); setFieldErrors({});}} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-slate-900" />
               <Button type="submit" disabled={authLoading} className="w-full bg-slate-900 text-white rounded-xl py-6 font-semibold mt-2">{authLoading ? <Loader2 className="w-5 h-5 animate-spin"/> : isAuthRegister ? "Create Account" : "Sign In"}</Button>
             </form>
@@ -912,28 +787,21 @@ export default function Page() {
 
       {viewReceipt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="w-full max-w-md bg-white rounded-[32px] shadow-2xl overflow-hidden relative flex flex-col max-h-[85vh]">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <div>
-                <h3 className="font-bold text-slate-900 text-lg">{viewReceipt.store_name}</h3>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{viewReceipt.date}</p>
-              </div>
+          <div className="w-full max-w-md bg-white rounded-[32px] shadow-2xl overflow-hidden relative flex flex-col max-h-[90vh]">
+            <div className="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div><h3 className="font-bold text-slate-900 text-lg">{viewReceipt.store_name}</h3><p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{viewReceipt.date}</p></div>
               <button onClick={() => setViewReceipt(null)} className="p-2 bg-white rounded-full shadow-sm hover:bg-slate-100"><X className="w-4 h-4 text-slate-600"/></button>
             </div>
-            <div className="p-6 overflow-y-auto space-y-4 flex-1">
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1">
               {viewReceipt.items.map((item, i) => (
                 <div key={i} className="flex justify-between items-center">
-                  <div>
-                    <p className="font-semibold text-slate-800 text-sm">{item.name}</p>
-                    <p className="text-[10px] text-slate-400 uppercase font-bold">{item.category}</p>
-                  </div>
+                  <div><p className="font-semibold text-slate-800 text-sm">{item.name}</p><p className="text-[10px] text-slate-400 uppercase font-bold">{item.category}</p></div>
                   <span className="font-mono font-bold text-slate-600">£{item.price.toFixed(2)}</span>
                 </div>
               ))}
             </div>
-            <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
-              <span className="font-semibold">Total Spent</span>
-              <span className="text-2xl font-bold">£{viewReceipt.total_spent.toFixed(2)}</span>
+            <div className="p-5 sm:p-6 bg-slate-900 text-white flex justify-between items-center">
+              <span className="font-semibold">Total Spent</span><span className="text-2xl font-bold">£{viewReceipt.total_spent.toFixed(2)}</span>
             </div>
           </div>
         </div>
@@ -942,11 +810,11 @@ export default function Page() {
       <SmartBasketPlusModal isOpen={isPremiumModalOpen} onClose={() => setIsPremiumModalOpen(false)} />
       
       {toastNotice && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 fade-in">
+        <div className="fixed bottom-24 md:bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 fade-in w-max max-w-[90vw]">
           <div className="bg-slate-900 text-white px-5 py-3 rounded-full shadow-2xl text-sm font-semibold flex items-center gap-2">
-            {toastNotice.type === 'success' && <Check className="w-4 h-4 text-emerald-400"/>}
-            {toastNotice.type === 'error' && <AlertCircle className="w-4 h-4 text-rose-400"/>}
-            {toastNotice.text}
+            {toastNotice.type === 'success' && <Check className="w-4 h-4 text-emerald-400 shrink-0"/>}
+            {toastNotice.type === 'error' && <AlertCircle className="w-4 h-4 text-rose-400 shrink-0"/>}
+            <span className="truncate">{toastNotice.text}</span>
           </div>
         </div>
       )}
@@ -961,40 +829,24 @@ export default function Page() {
               90% { opacity: 1; }
               100% { transform: translateY(128px); opacity: 0; }
             }
-            .animate-scanline {
-              animation: scanline 2s ease-in-out infinite;
-            }
+            .animate-scanline { animation: scanline 2s ease-in-out infinite; }
           `}</style>
-          
           <div className="bg-white rounded-[32px] shadow-2xl p-8 sm:p-12 max-w-sm w-full flex flex-col items-center relative overflow-hidden animate-in zoom-in-95 duration-500">
-            
-            {/* Animated Scanning Graphic */}
             <div className="relative w-24 h-32 bg-slate-50 border-2 border-slate-200 rounded-xl mb-8 flex items-center justify-center overflow-hidden shadow-inner">
               <Receipt className="w-10 h-10 text-slate-300" />
               <div className="absolute top-0 left-0 right-0 h-0.5 bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,1)] animate-scanline z-10" />
               <div className="absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-transparent to-emerald-500/20 animate-scanline" />
             </div>
-
             <h2 className="text-2xl font-extrabold text-slate-900 mb-2">Analyzing Receipt</h2>
-            
             <div className="h-6 flex items-center justify-center overflow-hidden w-full relative">
-               <p key={scanStep} className="text-emerald-600 font-semibold text-sm animate-in slide-in-from-bottom-2 fade-in duration-300 absolute text-center">
-                 {SCAN_STEPS[scanStep]}
-               </p>
+               <p key={scanStep} className="text-emerald-600 font-semibold text-sm animate-in slide-in-from-bottom-2 fade-in duration-300 absolute text-center">{SCAN_STEPS[scanStep]}</p>
             </div>
-
             <div className="w-full bg-slate-100 h-2 rounded-full mt-6 overflow-hidden">
               <div className="bg-emerald-500 h-full rounded-full transition-all duration-500 ease-out" style={{ width: `${((scanStep + 1) / SCAN_STEPS.length) * 100}%` }} />
             </div>
-
-            {/* MINIMIZE BUTTON */}
-            <button 
-              onClick={() => setIsScannerMinimized(true)}
-              className="mt-8 text-sm font-semibold text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-1.5"
-            >
+            <button onClick={() => setIsScannerMinimized(true)} className="mt-8 text-sm font-semibold text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-1.5">
               Continue in background <ArrowRight className="w-4 h-4" />
             </button>
-
           </div>
         </div>
       )}
