@@ -327,6 +327,7 @@ export default function Page() {
       } else if (data.receipt_id) {
         showToast("Receipt queued! Analyzing in background...", "info");
         setPollingReceiptId(data.receipt_id); 
+        setUploading(false);
       } else {
         showToast("Uploaded successfully.", "success");
         setUploading(false);
