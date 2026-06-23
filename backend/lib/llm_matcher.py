@@ -54,7 +54,7 @@ def resolve_unmatched_entity(raw_string: str, discount_type: str = None) -> dict
         "2. JUNK/FRAGMENT RULE: If the raw string contains no recognizable product description, consists only of numbers, or is a solitary tax letter... you MUST return an empty string for both fields to trigger a pipeline skip.\n"
         "3. STRIP SUPERMARKET BRAND JARGON: Completely remove retail tier prefixes, brand markers, and internal abbreviations from the final name (e.g., Strip 'JS', 'SSTC', 'SO', 'M', 'WM', 'HBR').\n"
         "4. HEAL OCR MUTATIONS: OCR engines frequently insert random spaces or misread characters in valid product names (e.g., 'A Imonds', '0live Snack'). You MUST heal these typographical errors and return the corrected, canonical word ('Almonds', 'Olive Snack') rather than returning an empty string to skip it.\n"
-        "5. PRESERVE CORE NOUNS: Your job is to clean, not rewrite. If you encounter a mangled word (e.g., 'HuSHROOHS'), you may correct the spelling (e.g., 'Mushrooms'), but you MUST NEVER combine words or delete the primary descriptive noun (e.g., 'Button'). 'Button HuSHROOHS' must become 'Button Mushrooms', NOT 'Bushrooms'.\n"
+        "5. PRESERVE CORE NOUNS: Your job is to clean, not rewrite. If you encounter a mangled word (e.g., 'HuSHROOHS'), you may correct the spelling (e.g., 'Mushrooms'). You MUST NEVER combine words, delete the primary descriptive noun, or invert modifiers (e.g., 'Seedles Grap' MUST become 'Seedless Grapes', NEVER 'Grapeseed').\n"
         "6. CATEGORY HALLUCINATION PREVENTION: Do not guess highly specific categories (like 'Meat' or 'Seafood') if the text is just a fragmented brand, country, or ambiguous adjective (e.g., 'Spanish', 'Finest'). Default to 'Groceries' or 'Miscellaneous'.\n"
         "7. ALCOHOL IDENTIFIERS: If you see words like 'Dry', 'Res', 'Blanc', or 'Pnt' associated with a country (e.g., 'Spanish Dry', 'French Blanc'), categorize it strictly as 'Alcohol' or 'Wine'.\n"
         "8. CONTEXTUAL HINTS: If a 'Contextual Hint' is provided (e.g., a wine discount, a meal deal), use it to determine the category if the raw string is ambiguous. For example, if the string is 'SPANISH Pr' and the hint is 'Co-op Wine Offer', you must classify it as 'Wine' or 'Alcohol'.\n\n"
@@ -63,6 +63,7 @@ def resolve_unmatched_entity(raw_string: str, discount_type: str = None) -> dict
         "- 'Coca cola (original Taste) 1.75l' -> Cleaned: 'Coca-Cola Original Taste', Category: 'Beverages', size_value: 1.75, size_unit: 'L'\n"
         "- 'Org Bnz 1kg Swt' -> Cleaned: 'Organic Bananas', Category: 'Fresh Produce', size_value: 1.0, size_unit: 'kg'\n"
         "- 'Ktc Pure Butter Ghee 500g' -> Cleaned: 'Pure Butter Ghee', Category: 'Dairy', size_value: 500.0, size_unit: 'g'\n"
+        "- '1 Red Seedles Gr ap' -> Cleaned: 'Red Seedless Grapes', Category: 'Fresh Produce', size_value: null, size_unit: null\n"
         "- 'JS CHINESE LEAF' -> Cleaned: 'Chinese Leaf', Category: 'Fresh Produce', size_value: null, size_unit: null\n"
         "- 'CP W/MEAL FRMHSE' -> Cleaned: 'Wholemeal Farmhouse Bread', Category: 'Bakery', size_value: null, size_unit: null\n"
     )
