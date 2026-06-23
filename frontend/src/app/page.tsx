@@ -30,6 +30,9 @@ export default function Page() {
   const [isPremiumModalOpen, setIsPremiumModalOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [showAdvancedInsights, setShowAdvancedInsights] = useState(false);
+  
+  // Shopping Plan Toggle State
+  const [planMode, setPlanMode] = useState<"split" | "single">("split");
 
   // Auth States
   const [token, setToken] = useState<string | null>(null);
@@ -491,49 +494,128 @@ export default function Page() {
             )}
 
             {/* 3. SHOPPING PLAN CONTAINER */}
-            {optimizedSplit && (
+            {optimizedSplit && basketOptions.length > 0 && (
               <section id="shopping-plan" className="space-y-6 scroll-mt-24">
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-2">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
                   <h2 className="text-2xl font-bold tracking-tight text-slate-900">Best Shopping Plan</h2>
-                  {optimizedSplit.net_savings === 0 && <span className="text-sm font-semibold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full self-start sm:self-auto">One-Store Option</span>}
+                  
+                  {/* The Toggle Control */}
+                  {optimizedSplit.net_savings > 0 ? (
+                    <div className="flex bg-slate-200/50 p-1 rounded-full self-start sm:self-auto border border-slate-200/50">
+                      <button
+                        onClick={() => setPlanMode("split")}
+                        className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all duration-300 ${
+                          planMode === "split" 
+                            ? "bg-white text-emerald-600 shadow-sm" 
+                            : "text-slate-500 hover:text-slate-700"
+                        }`}
+                      >
+                        Split Trip <span className="hidden sm:inline font-medium">(Save £{optimizedSplit.net_savings.toFixed(2)})</span>
+                      </button>
+                      <button
+                        onClick={() => setPlanMode("single")}
+                        className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all duration-300 ${
+                          planMode === "single" 
+                            ? "bg-white text-slate-900 shadow-sm" 
+                            : "text-slate-500 hover:text-slate-700"
+                        }`}
+                      >
+                        Single Store
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-sm font-semibold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full self-start sm:self-auto">
+                      One-Store Option
+                    </span>
+                  )}
                 </div>
-                <div className="grid md:grid-cols-2 gap-4 sm:gap-6">
-                  {(() => {
-                    const groupedAllocations = optimizedSplit.allocations.reduce((acc: any, alloc: any) => {
-                      const store = alloc.allocated_store || "Unknown";
-                      if (!acc[store]) acc[store] = [];
-                      acc[store].push(alloc);
-                      return acc;
-                    }, {});
 
-                    return Object.entries(groupedAllocations).map(([storeName, items]: [string, any]) => {
-                      const storeTotal = items.reduce((sum: number, item: any) => sum + item.total_cost, 0);
-                      return (
-                        <div key={storeName} className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200/50 flex flex-col justify-between">
-                          <div>
-                            <div className="flex justify-between items-end mb-2">
-                              <h3 className="text-lg font-bold text-slate-900">{storeName}</h3>
-                              <span className="text-xl font-bold text-emerald-600">£{storeTotal.toFixed(2)}</span>
-                            </div>
-                            <p className="text-sm text-slate-500 font-medium mb-4">Buy these items here:</p>
-                            
-                            <div className="max-h-[220px] overflow-y-auto pr-1 space-y-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full">
-                              {items.map((alloc: any, idx: number) => (
-                                <div key={idx} className="flex justify-between items-center text-sm font-medium text-slate-700 bg-slate-50 rounded-xl px-4 py-3 mr-1">
-                                  <div className="flex items-center gap-3 max-w-[70%]">
-                                    <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center shrink-0"><Check className="w-3 h-3 text-emerald-600" /></div>
-                                    <span className="truncate">{alloc.item_name}</span>
+                {/* --- RENDER SPLIT TRIP --- */}
+                {planMode === "split" && optimizedSplit.net_savings > 0 ? (
+                  <div className="grid md:grid-cols-2 gap-4 sm:gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {(() => {
+                      const groupedAllocations = optimizedSplit.allocations.reduce((acc: any, alloc: any) => {
+                        const store = alloc.allocated_store || "Unknown";
+                        if (!acc[store]) acc[store] = [];
+                        acc[store].push(alloc);
+                        return acc;
+                      }, {});
+
+                      return Object.entries(groupedAllocations).map(([storeName, items]: [string, any]) => {
+                        const storeTotal = items.reduce((sum: number, item: any) => sum + item.total_cost, 0);
+                        return (
+                          <div key={storeName} className="bg-white rounded-3xl p-5 sm:p-6 shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-slate-200/50 flex flex-col justify-between">
+                            <div>
+                              <div className="flex justify-between items-end mb-2">
+                                <h3 className="text-lg font-bold text-slate-900">{storeName}</h3>
+                                <span className="text-xl font-bold text-emerald-600">£{storeTotal.toFixed(2)}</span>
+                              </div>
+                              <p className="text-sm text-slate-500 font-medium mb-4">Buy these items here:</p>
+                              
+                              <div className="max-h-[220px] overflow-y-auto pr-1 space-y-3 custom-scrollbar">
+                                {items.map((alloc: any, idx: number) => (
+                                  <div key={idx} className="flex justify-between items-center text-sm font-medium text-slate-700 bg-slate-50 rounded-xl px-4 py-3 mr-1">
+                                    <div className="flex items-center gap-3 max-w-[70%]">
+                                      <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center shrink-0"><Check className="w-3 h-3 text-emerald-600" /></div>
+                                      <span className="truncate">{alloc.item_name}</span>
+                                    </div>
+                                    <span className="shrink-0 font-semibold text-slate-900">£{alloc.total_cost.toFixed(2)}</span>
                                   </div>
-                                  <span className="shrink-0 font-semibold text-slate-900">£{alloc.total_cost.toFixed(2)}</span>
-                                </div>
-                              ))}
+                                ))}
+                              </div>
                             </div>
                           </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                ) : (
+                  
+                  /* --- RENDER SINGLE STORE --- */
+                  <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-slate-200/60 animate-in fade-in zoom-in-95 duration-500">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 border-b border-slate-100 pb-6">
+                      <div>
+                        <div className="flex items-center gap-3 mb-1">
+                          <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center">
+                            <ShoppingBasket className="w-4 h-4 text-white" />
+                          </div>
+                          <h3 className="text-2xl font-extrabold text-slate-900">{basketOptions[0].store_name}</h3>
                         </div>
-                      );
-                    });
-                  })()}
-                </div>
+                        <p className="text-sm text-slate-500 font-medium mt-2">
+                          The cheapest overall one-stop shop for your basket.
+                          {basketOptions[0].items_counted < basketItems.length && (
+                            <span className="text-rose-500 ml-1">
+                              (Missing {basketItems.length - basketOptions[0].items_counted} items)
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="text-left sm:text-right bg-slate-50 px-6 py-4 rounded-2xl border border-slate-100">
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Total Cost</span>
+                        <span className="text-3xl font-extrabold text-slate-900">£{basketOptions[0].total_cost.toFixed(2)}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="grid sm:grid-cols-2 gap-x-8 gap-y-3">
+                      {basketItems.map((item, idx) => {
+                        const storeData = item.prices[basketOptions[0].store_name];
+                        return (
+                          <div key={idx} className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
+                            <div className="flex items-center gap-3 truncate pr-4">
+                              <span className="text-xs font-bold text-slate-400 w-4">{item.quantity}x</span>
+                              <span className={`text-sm font-semibold truncate ${storeData ? "text-slate-700" : "text-slate-400 line-through"}`}>
+                                {item.name}
+                              </span>
+                            </div>
+                            <span className="text-sm font-bold text-slate-900 shrink-0">
+                              {storeData ? `£${(storeData.price * item.quantity).toFixed(2)}` : "N/A"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 
