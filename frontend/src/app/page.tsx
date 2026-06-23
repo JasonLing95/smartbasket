@@ -132,14 +132,15 @@ export default function Page() {
         const data = await res.json();
 
         if (data.status === "completed") {
-          setPollingReceiptId(null); // Stop polling
-          setUploading(false);       // Stop the button spinner
+          setPollingReceiptId(null);
+          setUploading(false);       
           showToast("Receipt successfully parsed and saved!", "success");
-          refreshDashboardMetrics(); // Refresh the UI to show the new basket items
+          refreshDashboardMetrics(); 
         } else if (data.status === "failed") {
           setPollingReceiptId(null);
           setUploading(false);
-          showToast("Worker failed to process this receipt.", "error");
+          // 🛠️ Display the exact rejection reason from the backend
+          showToast(data.reason || "Worker failed to process this receipt.", "error");
         }
         // If data.status is "processing" or "pending", we do nothing. 
         // The interval will just check again in 3 seconds.

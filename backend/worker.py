@@ -59,25 +59,48 @@ def poll_queue_loop():
 
                 extracted = extract_receipt_data(file_bytes)
 
-                if extracted and "items" in extracted and extracted["items"]:
+                if extracted and "store_name" in extracted:
                     receipt_id, processed_count = (
                         execute_receipt_ingestion_hash_upgraded(
                             user_id=user_id,
                             store_name=extracted["store_name"],
-                            items=extracted["items"],
+                            items=extracted.get(
+                                "items", []
+                            ),  # Default to empty list if rejected
                             file_hash=file_hash,
                             background_tasks=bg_tasks,
                             extracted_total=extracted.get("total", 0.0),
                             receipt_date=extracted.get("date"),
                         )
                     )
-                    logger.info(
-                        f"✅ Ingestion complete. Receipt ID {receipt_id} recorded. Matched {processed_count} items."
-                    )
+
+                    if extracted["store_name"] == "REJECTED":
+                        print(
+                            f"🛑 Ingestion aborted. Receipt {file_hash} marked as REJECTED."
+                        )
+                    else:
+                        print(
+                            f"✅ Ingestion complete. Receipt ID {receipt_id} recorded. Matched {processed_count} items."
+                        )
                 else:
-                    logger.warning(
-                        "⚠️ Image reading execution yielded no parsed text elements."
+                    print(
+                        "⚠️ OCR execution yielded no payload. Marking as REJECTED to unblock UI."
                     )
+                    # Force a rejection into the DB so the frontend doesn't hang forever
+                    execute_receipt_ingestion_hash_upgraded(
+                        user_id=user_id,
+                        store_name="REJECTED",
+                        items=[],
+                        file_hash=file_hash,
+                        background_tasks=bg_tasks,
+                        extracted_total=0.0,
+                    )
+
+                execute_query(
+                    "DELETE FROM active_queue_locks WHERE image_hash = %s;",
+                    (file_hash,),
+                    commit=True,
+                )
 
                 sqs.delete_message(
                     QueueUrl=QUEUE_URL, ReceiptHandle=message["ReceiptHandle"]

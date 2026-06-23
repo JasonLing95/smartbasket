@@ -518,6 +518,27 @@ async def upload_real_receipt(
                     "cached": True,
                 }
 
+            lock_query = """
+                INSERT INTO active_queue_locks (image_hash, queued_at) 
+                VALUES (%s, CURRENT_TIMESTAMP)
+                ON CONFLICT (image_hash) DO UPDATE 
+                SET queued_at = CURRENT_TIMESTAMP 
+                WHERE active_queue_locks.queued_at < NOW() - INTERVAL '10 minutes'
+                RETURNING image_hash;
+            """
+            lock_result = execute_query(
+                lock_query, (file_hash,), commit=True, fetch_res=True
+            )
+
+            if not lock_result:
+                logger.info(f"⏳ Receipt {file_hash} is already in the SQS queue!")
+                return {
+                    "status": "success",
+                    "message": "This receipt is currently processing in the background.",
+                    "store_detected": "Pending",
+                    "cached": True,  # This tells the frontend UI to stop uploading
+                }
+
             # Connect to AWS ecosystem natively using system-level environment vars
             import boto3
             import json
@@ -556,25 +577,25 @@ async def upload_real_receipt(
 
 @app.get("/receipts/{file_hash}/status")
 def check_receipt_status(file_hash: str):
-    """
-    Frontend polls this using the image hash.
-    If the worker is done, the row will exist in the DB.
-    """
     try:
-        # Check if the worker has successfully ingested the receipt
         record = execute_query(
             "SELECT id, store_name FROM receipts WHERE image_hash = %s LIMIT 1;",
             (file_hash,),
         )
 
         if record:
-            # The worker finished and saved it!
+            # 🛠️ Intercept the rejection and fail the polling request
+            if record[0][1] == "REJECTED":
+                return {
+                    "status": "failed",
+                    "reason": "Not a recognized UK supermarket.",
+                }
+
             return {
                 "status": "completed",
                 "data": {"receipt_id": str(record[0][0]), "store_name": record[0][1]},
             }
         else:
-            # The row doesn't exist yet, meaning the worker is still processing
             return {"status": "processing"}
 
     except Exception as e:

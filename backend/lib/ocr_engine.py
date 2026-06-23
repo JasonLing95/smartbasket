@@ -67,6 +67,21 @@ STOPWORDS = [
     "op ",
 ]
 
+VALID_SUPERMARKETS = [
+    "tesco",
+    "sainsbury",
+    "morrison",
+    "aldi",
+    "lidl",
+    "co-op",
+    "coop",
+    "waitrose",
+    "asda",
+    "iceland",
+    "m&s",
+    "marks & spencer",
+]
+
 PRICE_PATTERN = re.compile(r"([£€E]?\s*\d+[\.,]\s*\d{2})", re.IGNORECASE)
 
 
@@ -158,7 +173,7 @@ def extract_receipt_data_via_llm(text_blob: str) -> dict | None:
         "You are an advanced retail receipt intelligence document parser built specifically for UK supermarkets.\n"
         "Analyze the provided raw text lines extracted from a grocery receipt and convert them into a clean structured JSON format.\n\n"
         "Rules:\n"
-        "1. Identify the store_name cleanly (e.g. Tesco, Sainsbury's, Co-op, Lidl, Aldi, Morrisons).\n"
+        "1. CRITICAL - STRICT STORE IDENTIFICATION: Identify the store_name EXACTLY as printed at the top of the receipt (e.g., 'Starbucks', 'B&Q', 'Tesco'). Do NOT guess or force a supermarket name if the receipt belongs to a restaurant, hardware store, or clothing retailer.\n"
         "2. CRITICAL - SCREENSHOT METADATA BAN: Completely ignore mobile phone status bar indicators.\n"
         "3. CRITICAL - LOYALTY DISCOUNTS & MEAL DEALS: Discounts apply to the parent item ABOVE them. Capture the positive base price in 'base_price', and the absolute value of the discount in 'discount_applied' (e.g., 0.50). Determine the name of the discount program (e.g., 'Tesco Clubcard', 'Nectar Price', 'Meal Deal') and output it as 'discount_type'. If there is no discount, set discount_type to null.\n"
         "   - TESCO CLUBCARD TRAP: Tesco prints the target discounted price inline (e.g., 'Cc £1.65') and the actual discount amount on the far right ('-£0.85'). YOU MUST IGNORE THE 'Cc £1.65' INLINE PRICE. The 'base_price' must remain the original higher price from the parent row above it (e.g., 2.50). Never use the 'Cc' price as the base price, or you will double-discount the item.\n"
@@ -258,6 +273,23 @@ def extract_receipt_data(file_bytes: bytes):
         logger.debug(f"Raw Extracted Text Dump:\n{full_text_dump}")
 
         structured_data = extract_receipt_data_via_llm(full_text_dump)
+
+        if structured_data and "store_name" in structured_data:
+            detected_store = structured_data.get("store_name", "").lower()
+
+            # Check if the extracted store matches any of our whitelisted UK supermarkets
+            is_valid = any(valid in detected_store for valid in VALID_SUPERMARKETS)
+
+            if not is_valid:
+                logger.error(
+                    f"🛑 REJECTED: '{structured_data.get('store_name')}' is not a supported UK Supermarket."
+                )
+                return {
+                    "store_name": "REJECTED",
+                    "items": [],
+                    "total": 0.0,
+                    "date": None,
+                }
 
         if structured_data and "items" in structured_data:
             # Clean out any empty stubs or garbage lines before running math
