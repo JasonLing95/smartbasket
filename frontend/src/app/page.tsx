@@ -66,6 +66,19 @@ export default function Page() {
   const [receiptsHistory, setReceiptsHistory] = useState<ReceiptHistoryItem[]>([]);
   const [optimizedSplit, setOptimizedSplit] = useState<any>(null);
   
+  // --- Animation & Scanner States ---
+  const [isScannerMinimized, setIsScannerMinimized] = useState(false);
+  const SCAN_STEPS = [
+    "Securing connection to AWS...",
+    "Flattening & enhancing image...",
+    "Running EasyOCR extraction...",
+    "Llama 3.3 parsing structural items...",
+    "Healing OCR text mutations...",
+    "Cross-referencing local prices...",
+    "Finalizing shopping plan..."
+  ];
+  const [scanStep, setScanStep] = useState(0);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
   const [isCarouselPaused, setIsCarouselPaused] = useState(false);
@@ -86,6 +99,18 @@ export default function Page() {
     const cachedUser = localStorage.getItem("sb_username");
     if (cachedToken && cachedUser) { setToken(cachedToken); setActiveUser(cachedUser); }
   }, []);
+
+  // Cycle the scanning text every 2.2 seconds while uploading or polling
+  useEffect(() => {
+    if (!uploading && !pollingReceiptId) {
+      setScanStep(0); // Reset when done
+      return;
+    }
+    const interval = setInterval(() => {
+      setScanStep((prev) => Math.min(prev + 1, SCAN_STEPS.length - 1));
+    }, 2200); 
+    return () => clearInterval(interval);
+  }, [uploading, pollingReceiptId]);
 
   useEffect(() => {
     if (isCarouselPaused || alerts.length < 4) return;
@@ -125,10 +150,9 @@ export default function Page() {
     const checkWorkerStatus = async () => {
       try {
         const fetchHeaders: HeadersInit = token ? { "Authorization": `Bearer ${token}` } : {};
-        // Hit the new Vercel status endpoint
         const res = await fetch(`${API_BASE}/api/receipts/${pollingReceiptId}/status`, { headers: fetchHeaders });
         
-        if (!res.ok) return; // Wait for the next interval if there's a temporary network blip
+        if (!res.ok) return; 
         const data = await res.json();
 
         if (data.status === "completed") {
@@ -139,20 +163,14 @@ export default function Page() {
         } else if (data.status === "failed") {
           setPollingReceiptId(null);
           setUploading(false);
-          // 🛠️ Display the exact rejection reason from the backend
           showToast(data.reason || "Worker failed to process this receipt.", "error");
         }
-        // If data.status is "processing" or "pending", we do nothing. 
-        // The interval will just check again in 3 seconds.
       } catch (err) {
         console.error("Polling error:", err);
       }
     };
 
-    // Ping the database every 3 seconds
     const intervalId = setInterval(checkWorkerStatus, 3000);
-    
-    // Cleanup interval if the component unmounts or ID changes
     return () => clearInterval(intervalId);
   }, [pollingReceiptId, token, API_BASE]);
 
@@ -284,11 +302,11 @@ export default function Page() {
     if (!e.target.files || e.target.files.length === 0) return;
     
     setUploading(true);
+    setIsScannerMinimized(false); // Make sure overlay pops up
     
     try {
       const originalFile = e.target.files[0];
       
-      // Compress the image to guarantee it stays under Vercel's 4.5MB limit
       const options = {
         maxSizeMB: 1,
         maxWidthOrHeight: 1600,
@@ -327,7 +345,7 @@ export default function Page() {
       } else if (data.receipt_id) {
         showToast("Receipt queued! Analyzing in background...", "info");
         setPollingReceiptId(data.receipt_id); 
-        setUploading(false);
+        // We do NOT set uploading(false) here, so the spinner continues while polling
       } else {
         showToast("Uploaded successfully.", "success");
         setUploading(false);
@@ -836,17 +854,36 @@ export default function Page() {
         )}
       </div>
 
-      {/* FLOATING ACTION SCAN TRIGGER */}
+      {/* FLOATING ACTION SCAN TRIGGER & BACKGROUND INDICATOR */}
       {token && (
         <>
           <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleReceiptUpload} />
           <button 
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="fixed bottom-8 right-8 z-40 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-4 rounded-full shadow-[0_8px_30px_rgb(16,185,129,0.3)] font-bold text-sm flex items-center gap-2 transition-transform hover:scale-105 active:scale-95 group disabled:opacity-70"
+            onClick={() => {
+              if (uploading || pollingReceiptId) {
+                setIsScannerMinimized(false);
+              } else {
+                fileInputRef.current?.click();
+              }
+            }}
+            className={`fixed bottom-8 right-8 z-40 text-white px-5 py-4 rounded-full font-bold text-sm flex items-center gap-2 transition-all duration-300 shadow-lg group
+              ${(uploading || pollingReceiptId) 
+                ? "bg-slate-900 hover:bg-slate-800 animate-pulse shadow-[0_8px_30px_rgb(0,0,0,0.2)]" 
+                : "bg-emerald-600 hover:bg-emerald-700 hover:scale-105 active:scale-95 shadow-[0_8px_30px_rgb(16,185,129,0.3)]"
+              }
+            `}
           >
-            {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5 group-hover:-rotate-12 transition-transform" />}
-            <span className="hidden sm:block">{uploading ? "Scanning..." : "Scan Receipt"}</span>
+            {(uploading || pollingReceiptId) ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span className="hidden sm:block">Processing in background...</span>
+              </>
+            ) : (
+              <>
+                <Camera className="w-5 h-5 group-hover:-rotate-12 transition-transform" />
+                <span className="hidden sm:block">Scan Receipt</span>
+              </>
+            )}
           </button>
         </>
       )}
@@ -903,6 +940,7 @@ export default function Page() {
       )}
 
       <SmartBasketPlusModal isOpen={isPremiumModalOpen} onClose={() => setIsPremiumModalOpen(false)} />
+      
       {toastNotice && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 fade-in">
           <div className="bg-slate-900 text-white px-5 py-3 rounded-full shadow-2xl text-sm font-semibold flex items-center gap-2">
@@ -912,6 +950,55 @@ export default function Page() {
           </div>
         </div>
       )}
+
+      {/* --- RECEIPT SCANNING OVERLAY (FULL SCREEN) --- */}
+      {(uploading || pollingReceiptId) && !isScannerMinimized && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 animate-in fade-in duration-300">
+          <style>{`
+            @keyframes scanline {
+              0% { transform: translateY(0); opacity: 0; }
+              10% { opacity: 1; }
+              90% { opacity: 1; }
+              100% { transform: translateY(128px); opacity: 0; }
+            }
+            .animate-scanline {
+              animation: scanline 2s ease-in-out infinite;
+            }
+          `}</style>
+          
+          <div className="bg-white rounded-[32px] shadow-2xl p-8 sm:p-12 max-w-sm w-full flex flex-col items-center relative overflow-hidden animate-in zoom-in-95 duration-500">
+            
+            {/* Animated Scanning Graphic */}
+            <div className="relative w-24 h-32 bg-slate-50 border-2 border-slate-200 rounded-xl mb-8 flex items-center justify-center overflow-hidden shadow-inner">
+              <Receipt className="w-10 h-10 text-slate-300" />
+              <div className="absolute top-0 left-0 right-0 h-0.5 bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,1)] animate-scanline z-10" />
+              <div className="absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-transparent to-emerald-500/20 animate-scanline" />
+            </div>
+
+            <h2 className="text-2xl font-extrabold text-slate-900 mb-2">Analyzing Receipt</h2>
+            
+            <div className="h-6 flex items-center justify-center overflow-hidden w-full relative">
+               <p key={scanStep} className="text-emerald-600 font-semibold text-sm animate-in slide-in-from-bottom-2 fade-in duration-300 absolute text-center">
+                 {SCAN_STEPS[scanStep]}
+               </p>
+            </div>
+
+            <div className="w-full bg-slate-100 h-2 rounded-full mt-6 overflow-hidden">
+              <div className="bg-emerald-500 h-full rounded-full transition-all duration-500 ease-out" style={{ width: `${((scanStep + 1) / SCAN_STEPS.length) * 100}%` }} />
+            </div>
+
+            {/* MINIMIZE BUTTON */}
+            <button 
+              onClick={() => setIsScannerMinimized(true)}
+              className="mt-8 text-sm font-semibold text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-1.5"
+            >
+              Continue in background <ArrowRight className="w-4 h-4" />
+            </button>
+
+          </div>
+        </div>
+      )}
+
     </main>
   );
 }
