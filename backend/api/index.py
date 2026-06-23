@@ -299,7 +299,7 @@ def execute_receipt_ingestion_hash_upgraded(
         if matched_item:
             master_item_id = matched_item["master_item_id"]
         else:
-            ai_resolution = resolve_unmatched_entity(raw_string)
+            ai_resolution = resolve_unmatched_entity(raw_string, discount_type)
             ai_action = ai_resolution.get("action")
 
             if ai_action == "skip":
