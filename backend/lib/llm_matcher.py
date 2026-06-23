@@ -58,6 +58,7 @@ def resolve_unmatched_entity(raw_string: str, discount_type: str = None) -> dict
         "6. CATEGORY HALLUCINATION PREVENTION: Do not guess highly specific categories (like 'Meat' or 'Seafood') if the text is just a fragmented brand, country, or ambiguous adjective (e.g., 'Spanish', 'Finest'). Default to 'Groceries' or 'Miscellaneous'.\n"
         "7. ALCOHOL IDENTIFIERS: If you see words like 'Dry', 'Res', 'Blanc', or 'Pnt' associated with a country (e.g., 'Spanish Dry', 'French Blanc'), categorize it strictly as 'Alcohol' or 'Wine'.\n"
         "8. CONTEXTUAL HINTS: If a 'Contextual Hint' is provided (e.g., a wine discount, a meal deal), use it to determine the category if the raw string is ambiguous. For example, if the string is 'SPANISH Pr' and the hint is 'Co-op Wine Offer', you must classify it as 'Wine' or 'Alcohol'.\n\n"
+        "9. MASHED WORDS & PASCALCASE: Discount supermarkets often print items with no spaces (e.g., 'ChewingGumWhiteMint', 'FreshMilkSemi'). You MUST split these mashed words into properly spaced, human-readable terms, even if OCR has slightly mangled the letters within them (e.g., 'ChewingGumlhitel Int' MUST be split and healed into 'Chewing Gum White Mint').\n\n"
         "Examples of messy raw string translations:\n"
         "- 'JS STRAWBS 40OG' -> Cleaned: 'Strawberries', Category: 'Fresh Produce', size_value: 400.0, size_unit: 'g'\n"
         "- 'Coca cola (original Taste) 1.75l' -> Cleaned: 'Coca-Cola Original Taste', Category: 'Beverages', size_value: 1.75, size_unit: 'L'\n"
@@ -66,6 +67,7 @@ def resolve_unmatched_entity(raw_string: str, discount_type: str = None) -> dict
         "- '1 Red Seedles Gr ap' -> Cleaned: 'Red Seedless Grapes', Category: 'Fresh Produce', size_value: null, size_unit: null\n"
         "- 'Stf1I Hinera] Water' -> Cleaned: 'Still Mineral Water', Category: 'Beverages', size_value: null, size_unit: null\n"
         "- 'Graham\\'s Hatura1' -> Cleaned: 'Grahams Natural', Category: 'Dairy', size_value: null, size_unit: null\n"
+        "- 'ChewingGumlhitel Int' -> Cleaned: 'Chewing Gum White Mint', Category: 'Groceries', size_value: null, size_unit: null\n"
     )
 
     user_content = f"Raw Receipt Line Entry to Process:\n'{raw_string}'"
