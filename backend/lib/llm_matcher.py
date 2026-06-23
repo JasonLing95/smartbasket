@@ -61,6 +61,7 @@ def resolve_unmatched_entity(raw_string: str, discount_type: str = None) -> dict
         "9. MASHED WORDS & PASCALCASE: Discount supermarkets often print items with no spaces (e.g., 'ChewingGumWhiteMint', 'FreshMilkSemi'). You MUST split these mashed words into properly spaced, human-readable terms, even if OCR has slightly mangled the letters within them (e.g., 'ChewingGumlhitel Int' MUST be split and healed into 'Chewing Gum White Mint').\n\n"
         "Examples of messy raw string translations:\n"
         "- 'JS STRAWBS 40OG' -> Cleaned: 'Strawberries', Category: 'Fresh Produce', size_value: 400.0, size_unit: 'g'\n"
+        "- 'SHRNEBS HooG' -> Cleaned: 'Strawberries', Category: 'Fresh Produce', size_value: 400.0, size_unit: 'g'\n"
         "- 'Coca cola (original Taste) 1.75l' -> Cleaned: 'Coca-Cola Original Taste', Category: 'Beverages', size_value: 1.75, size_unit: 'L'\n"
         "- 'Org Bnz 1kg Swt' -> Cleaned: 'Organic Bananas', Category: 'Fresh Produce', size_value: 1.0, size_unit: 'kg'\n"
         "- 'Ktc Pure Butter Ghee 500g' -> Cleaned: 'Pure Butter Ghee', Category: 'Dairy', size_value: 500.0, size_unit: 'g'\n"
