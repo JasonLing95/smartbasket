@@ -8,6 +8,8 @@ import statistics
 import easyocr
 import logging
 from groq import Groq
+import cv2
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +85,24 @@ VALID_SUPERMARKETS = [
 ]
 
 PRICE_PATTERN = re.compile(r"([£€E]?\s*\d+[\.,]\s*\d{2})", re.IGNORECASE)
+
+
+def preprocess_image(file_bytes: bytes) -> bytes:
+    """Applies adaptive thresholding to flatten shadows and enhance text."""
+    nparr = np.frombuffer(file_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+    # Convert to grayscale
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Adaptive thresholding removes lighting gradients (shadows/crinkles)
+    thresh = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 15
+    )
+
+    # Encode back to bytes
+    _, buf = cv2.imencode(".jpg", thresh)
+    return buf.tobytes()
 
 
 def detect_store(text_blob: str):
@@ -176,8 +196,9 @@ def extract_receipt_data_via_llm(text_blob: str) -> dict | None:
         "1. CRITICAL - STRICT STORE IDENTIFICATION: Identify the store_name EXACTLY as printed at the top of the receipt (e.g., 'Starbucks', 'B&Q', 'Tesco'). Do NOT guess or force a supermarket name if the receipt belongs to a restaurant, hardware store, or clothing retailer.\n"
         "2. CRITICAL - SCREENSHOT METADATA BAN: Completely ignore mobile phone status bar indicators.\n"
         "3. CRITICAL - LOYALTY DISCOUNTS & MEAL DEALS: Discounts apply to the parent item ABOVE them. Capture the positive base price in 'base_price', and the absolute value of the discount in 'discount_applied' (e.g., 0.50). Determine the name of the discount program (e.g., 'Tesco Clubcard', 'Nectar Price', 'Meal Deal') and output it as 'discount_type'. If there is no discount, set discount_type to null.\n"
-        "   - TESCO CLUBCARD TRAP: Tesco prints the target discounted price inline (e.g., 'Cc £1.65') and the actual discount amount on the far right ('-£0.85'). YOU MUST IGNORE THE 'Cc £1.65' INLINE PRICE. The 'base_price' must remain the original higher price from the parent row above it (e.g., 2.50). Never use the 'Cc' price as the base price, or you will double-discount the item.\n"
-        "   - POSITIVE DISCOUNT TRAP: Stores like Co-op print discounts as positive numbers (e.g., 'Co-op Wine Offer £1.15'). If a line contains words like 'Offer', 'Saving', or 'Discount', it is a DISCOUNT. You MUST extract it as 'discount_applied' and apply it to the parent item. NEVER extract an offer as a standalone grocery item.\n"
+        "   - TESCO CLUBCARD TRAP: Tesco prints the target discounted price inline... \n"
+        "   - POSITIVE DISCOUNT TRAP: Stores like Co-op print discounts as positive numbers...\n"
+        "   - MULTI-SAVE & DOUBLE NEGATIVES: If you see a standalone 'Multi-save' row, especially with a double-negative like '-£-1.50', it is NOT a product. It is a discount. You MUST extract the absolute value (1.50) and apply it to the parent item immediately above it.\n"
         "4. CRITICAL - MULTI-LINE PRODUCTS & SANDWICHED DESCRIPTIONS: Collapse consecutive rows of a single product into ONE entry. If an item description wraps to a second line (e.g., 'Walkers Crisps' on line 1, 'Sweet Chilli 150g' on line 2), DO NOT split them into two items. If a descriptive string (like '- Original 380ml') is sandwiched between a parent item and its discount, you MUST merge the description into the parent's 'raw_string' and apply the discount directly to the parent. Ensure you lock the base_price to the EXACT positive number printed on the extreme right of the parent item's row.\n"
         "5. CRITICAL - DATE EXTRACTION: Extract the exact printed transaction date. You MUST assume all dates are printed in standard UK format (DD/MM/YY or DD/MM/YYYY). Convert the extracted date strictly to YYYY-MM-DD. For example, '02/06/26' must become '2026-06-02'.\n"
         "6. CRITICAL - QUANTITY MULTIPLIERS & LEADING INTEGERS: Look for inline multipliers (e.g., '5 x £1.75') OR leading standalone integers at the very start of a line (e.g., '2 M SPINACH' means quantity 2). You MUST extract the exact quantity AND completely remove that leading integer and any multiplier symbols from the final 'raw_string' output (e.g., output 'M SPINACH', not '2 M SPINACH').\n"
@@ -263,7 +284,8 @@ def extract_receipt_data(file_bytes: bytes):
     logger.info("Executing heavy EasyOCR sequence...")
     try:
         logger.info("----- OCR START -----")
-        results = reader.readtext(file_bytes, detail=1)
+        clean_bytes = preprocess_image(file_bytes)
+        results = reader.readtext(clean_bytes, detail=1)
 
         straightened_results = deskew_positions(results)
         text_blob = "\n".join(text for _, text, _ in straightened_results)
