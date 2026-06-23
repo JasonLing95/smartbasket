@@ -31,8 +31,9 @@ export default function Page() {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [showAdvancedInsights, setShowAdvancedInsights] = useState(false);
   
-  // Shopping Plan Toggle State
+  // Shopping Plan Toggle & Selection States
   const [planMode, setPlanMode] = useState<"split" | "single">("split");
+  const [selectedSingleStore, setSelectedSingleStore] = useState<string | null>(null);
 
   // Auth States
   const [token, setToken] = useState<string | null>(null);
@@ -198,7 +199,13 @@ export default function Page() {
         const itemsData = await itemsRes.json();
         const receiptsData = await receiptsRes.json();
 
-        if (basketData.basket_options) setBasketOptions(basketData.basket_options);
+        if (basketData.basket_options) {
+          setBasketOptions(basketData.basket_options);
+          // Default to the absolute cheapest store if no store is currently selected
+          if (!selectedSingleStore && basketData.basket_options.length > 0) {
+            setSelectedSingleStore(basketData.basket_options[0].store_name);
+          }
+        }
         if (basketData.optimized_split) setOptimizedSplit(basketData.optimized_split);
         if (itemsData.items) setBasketItems(itemsData.items);
         if (itemsData.stores) setAvailableStores(itemsData.stores);
@@ -572,49 +579,75 @@ export default function Page() {
                 ) : (
                   
                   /* --- RENDER SINGLE STORE --- */
-                  <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-slate-200/60 animate-in fade-in zoom-in-95 duration-500">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 border-b border-slate-100 pb-6">
-                      <div>
-                        <div className="flex items-center gap-3 mb-1">
-                          <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center">
-                            <ShoppingBasket className="w-4 h-4 text-white" />
-                          </div>
-                          <h3 className="text-2xl font-extrabold text-slate-900">{basketOptions[0].store_name}</h3>
-                        </div>
-                        <p className="text-sm text-slate-500 font-medium mt-2">
-                          The cheapest overall one-stop shop for your basket.
-                          {basketOptions[0].items_counted < basketItems.length && (
-                            <span className="text-rose-500 ml-1">
-                              (Missing {basketItems.length - basketOptions[0].items_counted} items)
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      <div className="text-left sm:text-right bg-slate-50 px-6 py-4 rounded-2xl border border-slate-100">
-                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Total Cost</span>
-                        <span className="text-3xl font-extrabold text-slate-900">£{basketOptions[0].total_cost.toFixed(2)}</span>
-                      </div>
-                    </div>
+                  (() => {
+                    const activeStoreOpt = basketOptions.find(o => o.store_name === selectedSingleStore) || basketOptions[0];
                     
-                    <div className="grid sm:grid-cols-2 gap-x-8 gap-y-3">
-                      {basketItems.map((item, idx) => {
-                        const storeData = item.prices[basketOptions[0].store_name];
-                        return (
-                          <div key={idx} className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
-                            <div className="flex items-center gap-3 truncate pr-4">
-                              <span className="text-xs font-bold text-slate-400 w-4">{item.quantity}x</span>
-                              <span className={`text-sm font-semibold truncate ${storeData ? "text-slate-700" : "text-slate-400 line-through"}`}>
-                                {item.name}
-                              </span>
+                    return (
+                      <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-slate-200/60 animate-in fade-in zoom-in-95 duration-500">
+                        
+                        {/* Store Selector Tabs */}
+                        <div className="flex gap-2 overflow-x-auto pb-6 mb-6 border-b border-slate-100 custom-scrollbar">
+                          {basketOptions.map(opt => (
+                            <button
+                              key={opt.store_name}
+                              onClick={() => setSelectedSingleStore(opt.store_name)}
+                              className={`px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all border ${
+                                selectedSingleStore === opt.store_name
+                                  ? "bg-slate-900 text-white border-slate-900 shadow-md"
+                                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                              }`}
+                            >
+                              {opt.store_name} • £{opt.total_cost.toFixed(2)}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Store Details Header */}
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                          <div>
+                            <div className="flex items-center gap-3 mb-1">
+                              <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center">
+                                <ShoppingBasket className="w-4 h-4 text-white" />
+                              </div>
+                              <h3 className="text-2xl font-extrabold text-slate-900">{activeStoreOpt.store_name}</h3>
                             </div>
-                            <span className="text-sm font-bold text-slate-900 shrink-0">
-                              {storeData ? `£${(storeData.price * item.quantity).toFixed(2)}` : "N/A"}
-                            </span>
+                            <p className="text-sm text-slate-500 font-medium mt-2">
+                              Your complete shopping list at this store.
+                              {activeStoreOpt.items_counted < basketItems.length && (
+                                <span className="text-rose-500 ml-1">
+                                  (Missing {basketItems.length - activeStoreOpt.items_counted} items)
+                                </span>
+                              )}
+                            </p>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                          <div className="text-left sm:text-right bg-slate-50 px-6 py-4 rounded-2xl border border-slate-100 w-full sm:w-auto">
+                            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Total Cost</span>
+                            <span className="text-3xl font-extrabold text-slate-900">£{activeStoreOpt.total_cost.toFixed(2)}</span>
+                          </div>
+                        </div>
+                        
+                        {/* Store Item List */}
+                        <div className="grid sm:grid-cols-2 gap-x-8 gap-y-3">
+                          {basketItems.map((item, idx) => {
+                            const storeData = item.prices[activeStoreOpt.store_name];
+                            return (
+                              <div key={idx} className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
+                                <div className="flex items-center gap-3 truncate pr-4">
+                                  <span className="text-xs font-bold text-slate-400 w-4">{item.quantity}x</span>
+                                  <span className={`text-sm font-semibold truncate ${storeData ? "text-slate-700" : "text-slate-400 line-through"}`}>
+                                    {item.name}
+                                  </span>
+                                </div>
+                                <span className="text-sm font-bold text-slate-900 shrink-0">
+                                  {storeData ? `£${(storeData.price * item.quantity).toFixed(2)}` : "N/A"}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()
                 )}
               </section>
             )}
