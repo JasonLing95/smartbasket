@@ -46,7 +46,7 @@ def poll_queue_loop():
 
             for message in response["Messages"]:
                 logger.info(
-                    "📥 Receipt message popped from SQS pipeline. Starting OCR processing..."
+                    "📥 Receipt message popped from SQS pipeline. Validating..."
                 )
                 job_data = json.loads(message["Body"])
 
@@ -54,9 +54,32 @@ def poll_queue_loop():
                 user_id = job_data["user_id"]
                 file_hash = job_data["file_hash"]
 
+                # 🛡️ CATCH DUPLICATES BEFORE RUNNING OCR 🛡️
+                existing_receipt = execute_query(
+                    "SELECT id FROM receipts WHERE image_hash = %s LIMIT 1;",
+                    (file_hash,),
+                )
+                if existing_receipt:
+                    logger.warning(
+                        f"♻️ Duplicate hash detected in queue: {file_hash}. Skipping OCR extraction."
+                    )
+
+                    # Clean up the system locks and delete the bad message so it doesn't loop
+                    execute_query(
+                        "DELETE FROM active_queue_locks WHERE image_hash = %s;",
+                        (file_hash,),
+                        commit=True,
+                    )
+                    sqs.delete_message(
+                        QueueUrl=QUEUE_URL, ReceiptHandle=message["ReceiptHandle"]
+                    )
+                    continue
+
+                # Proceed with regular processing if it's unique
                 s3_object = s3.get_object(Bucket=BUCKET_NAME, Key=s3_key)
                 file_bytes = s3_object["Body"].read()
 
+                logger.info("⚡ Running heavy EasyOCR sequence...")
                 extracted = extract_receipt_data(file_bytes)
 
                 if extracted and "store_name" in extracted:
@@ -64,9 +87,7 @@ def poll_queue_loop():
                         execute_receipt_ingestion_hash_upgraded(
                             user_id=user_id,
                             store_name=extracted["store_name"],
-                            items=extracted.get(
-                                "items", []
-                            ),  # Default to empty list if rejected
+                            items=extracted.get("items", []),
                             file_hash=file_hash,
                             background_tasks=bg_tasks,
                             extracted_total=extracted.get("total", 0.0),
@@ -86,7 +107,6 @@ def poll_queue_loop():
                     print(
                         "⚠️ OCR execution yielded no payload. Marking as REJECTED to unblock UI."
                     )
-                    # Force a rejection into the DB so the frontend doesn't hang forever
                     execute_receipt_ingestion_hash_upgraded(
                         user_id=user_id,
                         store_name="REJECTED",
