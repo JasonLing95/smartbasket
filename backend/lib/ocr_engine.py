@@ -67,6 +67,9 @@ STOPWORDS = [
     "txn",
     "trns",
     "op ",
+    "gift card",
+    "cash",
+    "balance",
 ]
 
 VALID_SUPERMARKETS = [
@@ -142,7 +145,7 @@ def deskew_positions(results):
 
 
 def group_into_lines(results):
-    """Groups text using a tight Center-to-Center anchor to prevent vertical line collisions."""
+    """Groups text using an adaptive Center-to-Center anchor to prevent vertical line collisions."""
     lines_data = []
 
     for bbox, text, _ in results:
@@ -156,8 +159,14 @@ def group_into_lines(results):
             line_y_centers = [(item[0][0][1] + item[0][2][1]) / 2 for item in line]
             avg_line_y_center = sum(line_y_centers) / len(line_y_centers)
 
-            # TIGHTER ZONE: The word's center must be closely aligned with the line's center
-            if abs(y_center - avg_line_y_center) <= (word_height * 0.35):
+            # Calculate average line height to prevent tiny punctuation from breaking the threshold
+            line_heights = [item[0][2][1] - item[0][0][1] for item in line]
+            avg_line_height = sum(line_heights) / max(len(line_heights), 1)
+
+            # RELAXED ZONE: Increased from 0.35 to 0.65 to catch misaligned prices on wavy paper
+            if abs(y_center - avg_line_y_center) <= (
+                max(word_height, avg_line_height) * 0.65
+            ):
                 line.append((bbox, text))
                 placed = True
                 break
@@ -317,11 +326,17 @@ def extract_receipt_data(file_bytes: bytes):
                 }
 
         if structured_data and "items" in structured_data:
+
+            # Auto-heal hallucinated keys from the LLM just in case
+            for item in structured_data.get("items", []):
+                if "raw_string" not in item:
+                    item["raw_string"] = item.get("name", item.get("description", ""))
+
             # Clean out any empty stubs or garbage lines before running math
             structured_data["items"] = [
                 item
                 for item in structured_data["items"]
-                if item.get("raw_string") and item["raw_string"].strip() != ""
+                if item.get("raw_string") and str(item["raw_string"]).strip() != ""
             ]
 
             # If no valid items remain, fallback immediately
