@@ -2,13 +2,24 @@
 
 The user-facing client interface for SmartBasket, designed to help users optimize grocery lists, visualize spending trends, and discover multi-store shopping combinations that maximize savings.
 
-## 🛠️ Tech Stack
+This application is built with **Next.js (App Router)** and optimized for **Vercel Edge Deployment** to ensure ultra-low latency rendering.
+
+## 🛠️ Tech Stack & UI Architecture
 
 * **Framework:** Next.js (App Router)
 * **Language:** TypeScript
 * **Styling & Components:** Tailwind CSS, Shadcn UI, Radix Primitives
 * **Data Visualizations:** Recharts (Area Charts & Stacked Bar Charts)
 * **Icons:** Lucide React
+
+### Advanced UX Implementations
+
+To meet the rigorous demands of a modern B2C application, this frontend implements several advanced client-side patterns:
+
+* **Client-Side Image Compression:** Utilizes `browser-image-compression` to resize and compress receipt images to under 1MB in the browser, drastically reducing upload latency and backend AWS bandwidth costs.
+* **Non-Blocking Asynchronous Scanner:** Receipt processing is fully decoupled. The UI features a background polling mechanism (`setInterval` checking the `status` endpoint) that allows users to minimize the scanning animation and continue navigating the app while the backend EC2 worker parses the image.
+* **Real-Time Price Streams:** Leverages Server-Sent Events (`EventSource`) to maintain an open connection with the FastAPI backend, pushing live price-drop alerts directly to the user's dashboard without requiring a page refresh.
+* **Mobile-First Design:** Features a responsive layout with a dedicated fixed bottom navigation bar (`pb-safe`) for iOS and Android web-app experiences.
 
 ---
 
@@ -25,82 +36,57 @@ Ensure you have the following installed:
 
 ## 2. Environment Configuration
 
-Create a `.env.local` file in the project root:
+Create a `.env.local` file in the project root to link the client to your API:
 
 ```env
+# Point this to your FastAPI backend (Local or Vercel Edge API)
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
-
----
 
 ## 3. Install Dependencies
 
 Install packages using your preferred package manager:
 
-### npm
-
 ```bash
 npm install
-```
 
-### pnpm
+# or
 
-```bash
 pnpm install
-```
 
-### yarn
+# or
 
-```bash
 yarn install
 ```
-
----
 
 ## 4. Start the Development Server
 
 Launch the Next.js development environment:
 
-### npm
-
 ```bash
 npm run dev
-```
 
-### pnpm
+# or
 
-```bash
 pnpm dev
-```
 
-### yarn
+# or
 
-```bash
 yarn dev
 ```
 
 Open your browser and navigate to:
 
-* **Application:** `http://localhost:3000`
+```text
+http://localhost:3000
+```
 
 ---
 
-## Features
+# ✨ Core Features
 
-* 📋 Build and manage grocery lists
-* 📈 Visualize historical spending patterns
-* 🛒 Compare prices across multiple supermarkets
-* 💰 Discover optimal store combinations for maximum savings
-* 📊 Interactive charts powered by Recharts
-* 🎨 Responsive UI built with Tailwind CSS and Shadcn UI
-
----
-
-## Development Stack
-
-* **Next.js App Router** for server and client components
-* **TypeScript** for type safety
-* **Tailwind CSS** for utility-first styling
-* **Shadcn UI + Radix** for accessible components
-* **Recharts** for interactive analytics
-* **Lucide React** for iconography
+* 📋 **Dynamic Shopping Plans:** Instantly toggle between **Split Trip** savings calculations and **Single Store** comparisons.
+* 📈 **Interactive Dashboards:** Visualize historical spending patterns with Recharts.
+* 🛒 **Cross-Store Catalog:** Search and compare granular price differences across multiple UK supermarkets.
+* 🔔 **Live Alerts:** Receive instant notifications when a basket item drops in price.
+* 📱 **Seamless Auth:** JWT-based bearer token authentication with secure local storage caching.
