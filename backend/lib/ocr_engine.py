@@ -6,6 +6,7 @@ import re
 import math
 import statistics
 import logging
+import time
 from groq import Groq
 import cv2
 import numpy as np
@@ -84,10 +85,9 @@ VALID_SUPERMARKETS = [
     "marks & spencer",
 ]
 
-PRICE_PATTERN = re.compile(r"([£€E]?\s*\d+[\.,]\s*\d{2})", re.IGNORECASE)
+# HEALED REGEX: Allows common OCR misreads for decimal dividers (e.g., E1.R9, E},69, 1:49)
+PRICE_PATTERN = re.compile(r"([£€E]?\s*\d+[.,:;R\}]\s*\d{2})", re.IGNORECASE)
 
-# FIX: Expanded — LLM occasionally ignores the schema and uses alternate key names.
-# Checking all known aliases prevents items silently dropping through the filter.
 _ITEM_NAME_ALIASES = (
     "name",
     "description",
@@ -165,9 +165,6 @@ def group_into_lines(results):
             line_heights = [item[0][2][1] - item[0][0][1] for item in line]
             avg_line_height = sum(line_heights) / max(len(line_heights), 1)
 
-            # FIX: Increased from 0.65 → 0.80. The old threshold caused right-aligned
-            # prices to land on a separate "line" on wide receipts where the price token
-            # sits a few pixels higher or lower than the item name due to paper warping.
             if abs(y_center - avg_line_y_center) <= (
                 max(word_height, avg_line_height) * 0.80
             ):
@@ -192,14 +189,7 @@ def group_into_lines(results):
 
 
 def _pair_orphaned_prices(lines: list) -> list:
-    """
-    Secondary fallback strategy for receipts where EasyOCR places a price token
-    on a separate line from its item name due to horizontal misalignment on
-    curved/wavy thermal paper.
-
-    Looks for a name-only line immediately followed by a price-only line and
-    pairs them into a single item dict.
-    """
+    """Secondary fallback recovery loop matching floating names to prices."""
     items = []
     i = 0
     while i < len(lines):
@@ -209,30 +199,30 @@ def _pair_orphaned_prices(lines: list) -> list:
             i += 1
             continue
 
-        # Lines already caught with an inline price are handled by the primary pass
         if PRICE_PATTERN.search(current):
             i += 1
             continue
 
-        # Check if the next line is essentially just a price with no description
         if i + 1 < len(lines):
             next_line = lines[i + 1]
             price_match = PRICE_PATTERN.search(next_line)
             if price_match:
                 remainder = PRICE_PATTERN.sub("", next_line).strip()
-                # If almost nothing remains after removing the price, it's a price-only line
                 if len(remainder) <= 3:
                     desc = current.strip()
                     if len(desc) > 2 and not desc.isdigit():
                         try:
-                            price_str = re.sub(
-                                r"[£€Ee\s]", "", price_match.group(1)
-                            ).replace(",", ".")
+                            price_str = (
+                                re.sub(r"[£€Ee\s]", "", price_match.group(1))
+                                .replace(",", ".")
+                                .replace("R", ".")
+                                .replace("}", ".")
+                            )
                             price = float(price_str)
                             items.append(
                                 {"raw_string": desc, "unit_price": price, "quantity": 1}
                             )
-                            i += 2  # Consume both the name and price lines
+                            i += 2
                             continue
                         except ValueError:
                             pass
@@ -243,10 +233,7 @@ def _pair_orphaned_prices(lines: list) -> list:
 
 
 def extract_receipt_data_via_llm(text_blob: str) -> dict | None:
-    """
-    Leverages the structural contextual processing capacity of Llama 3 to split
-    multi-buy line items into canonical quantities and individual unit prices.
-    """
+    """Leverages the structural contextual processing capacity of Llama 3 to parse receipts."""
     if not groq_client:
         logger.warning("Groq client not initialized. Skipping LLM extraction.")
         return None
@@ -270,12 +257,12 @@ def extract_receipt_data_via_llm(text_blob: str) -> dict | None:
         "8. CRITICAL - OCR NOISE & THE '8' / '5' MUTATION: OCR heavily misreads the '£' symbol as the number '8' or '5', leading to massively inflated prices (e.g., OCR reads '£5.50' as '85.50' or '55.50'). Single grocery items rarely cost over £20. If you see a suspiciously high price starting with an 8 or a 5 (e.g., 54.10, 89.20), you MUST assume the leading digit is a mangled '£' sign. Drop the leading '8' or '5' and extract the remaining float (e.g., '85.50' becomes 5.50, '54.10' becomes 4.10). Strip all other currency characters.\n"
         "9. CRITICAL - DUAL PRICE COLUMNS & LINE TOTALS: If you see BOTH a Unit Price and a Line Total on the same row (e.g., '5 x £1.75 8.75'), you MUST extract the smaller unit price (£1.75) as the 'base_price', and the explicit final larger amount (£8.75) as the 'line_total'. Do NOT ignore the line total.\n"
         "10. CRITICAL - TOTAL EXTRACTION vs PAYMENT METHODS: Extract the final net total cost of the basket. This is usually labeled 'BALANCE DUE', 'TOTAL', or 'AMOUNT DUE'. You MUST explicitly ignore 'Subtotal', 'Savings', or 'Promotions' lines when determining the final total. Explicitly ignore any lines detailing how the customer paid (e.g., 'GIFT CARD', 'CASH') UNLESS you are dealing with a Co-op receipt. NEVER extract 'GIFT CARD' as a physical grocery product in the `items` array.\n"
-        "11. CRITICAL - HEADER GLUE & FIRST ITEMS: OCR engines frequently merge the very first grocery item with the column headers (e.g., 'QTY DESCRIPTION PRICE 1 M FLAT MUSHROOMS £1.50'). If you see a grocery item glued to words like 'QTY', 'DESCRIPTION', or 'PRICE', you MUST extract the item and its price. Do NOT discard the entire line as a header.\n"
+        "11. CRITICAL - HEADER GLUE, ORPHANED PRICES & MISALIGNMENT: OCR engines frequently suffer from vertical misalignment on wavy receipts. If you see a row containing column headers glued directly to prices (e.g., 'QTY DESCRIPTION PRICE £1.89 Total £1.89' or 'aty ITeim Pr ica E1.R9 Totul E},69'), and the actual item description (e.g., '1 Red Seedles Grap') is isolated on the row immediately below or around it, you MUST merge them together into a single item. NEVER drop an item just because its price was grouped with the header or split onto an adjacent baseline.\n"
         "12. CRITICAL - VOIDS, CANCELLATIONS, & REFUNDS: A voided item will appear with a 'VOID' or 'LESS' prefix, ALONGSIDE A NEGATIVE CURRENCY VALUE on the exact same line. Do NOT confuse a hyphenated product description (e.g., '- Original 380ml') with a void. If a line just has text and no negative price, it is a product continuation, not a void. NEVER output a standalone item with a negative base_price or a negative quantity.\n"
         "13. CRITICAL - THE VOLUME/WEIGHT TRAP: Supermarket items often contain volume or weight metrics in the name (e.g., '1.75L', '500g', '1KG', '2.5L'). NEVER extract these numbers as the base_price. Ignore any float attached to a metric unit and look further right for the actual currency price.\n"
         "14. CRITICAL - IDENTICAL REPEATING ROWS: If a customer buys multiples of the same item and the store prints them on individual, consecutive lines, each with its own price (e.g., four consecutive lines of '*NESTLE WTR 12X500ML £2.65'), you MUST count how many times the row appears. Combine them into a single item, extract the single unit price (£2.65) as the 'base_price', and set the 'quantity' to the exact number of times the row appeared (e.g., 4). NEVER merge them and leave the quantity at 1.\n"
         "15. CRITICAL - SAINSBURY'S NECTAR SUMMARY: Sainsbury's receipts include a 'MY NECTAR SUMMARY' block that begins after a line of asterisks (***...). This section contains loyalty point balances and values (e.g., 'POINTS EARNED ON £2.74', 'POINTS EARNED 2'). You MUST completely ignore this entire block. NEVER extract items, discounts, prices, or totals from within it — including any £ values that coincidentally match item prices.\n"
-        "16. CRITICAL - SAINSBURY'S OWN-BRAND PREFIXES: Sainsbury's prefixes product names with store codes. 'JS' = Sainsbury's own brand. Codes like 'SSTC', 'SO', 'TT', 'HBR' are internal category markers. Strip ALL such prefixes from the 'raw_string'. E.g., 'JS SSTC GRAPE 500G' → raw_string: 'GRAPE 500G'. Combined with Rule 14: if 'JS SSTC GRAPE 500G £1.37' appears on TWO consecutive lines, output ONE item: {raw_string: 'GRAPE 500G', base_price: 1.37, quantity: 2, line_total: 2.74}.\n"
+        "16. CRITICAL - SAINSBURY'S OWN-BRAND PREFIXES: Sainsbury's prefixes product names with store codes. 'JS' = Sainsbury's own brand. Codes like 'SSTC', 'SO', 'TT', 'HBR' are internal category markers. Strip ALL such prefixes from the 'raw_string'. E.g., 'JS SSTC GRAPE 500G' → raw_string: 'GRAPE 500G'. Combined with Rule 14: if 'JS SSTC GRAPE 500G £1.37' appears on TWO consecutive lines, output ONE item: {raw_string: 'GRAPE 500G', base_price: 1.37, quantity: 2, line_total: 2.74}.\n\n"
         "Expected Output Schema — you MUST use exactly these key names:\n"
         "{\n"
         '  "store_name": "Sainsbury\'s",\n'
@@ -288,7 +275,11 @@ def extract_receipt_data_via_llm(text_blob: str) -> dict | None:
     )
 
     try:
-        logger.info("Sending text blob to Groq LLM for structural parsing...")
+        logger.info(
+            f"🧠 Sending {len(text_blob)} chars to Groq Llama 3.3 for structural parsing..."
+        )
+        start_llm = time.time()
+
         completion = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
@@ -298,28 +289,31 @@ def extract_receipt_data_via_llm(text_blob: str) -> dict | None:
             temperature=0.0,
             response_format={"type": "json_object"},
         )
+
+        llm_elapsed = time.time() - start_llm
         raw_response = completion.choices[0].message.content
 
-        # FIX: Was logger.debug — completely invisible in production. Changed to INFO
-        # so failures (empty items, wrong keys, hallucinated structure) are always visible.
-        logger.info(f"LLM Raw Output: {raw_response}")
+        logger.info(f"⏱️ Groq LLM responded in {llm_elapsed:.2f}s")
+        logger.info(f"📄 LLM Raw JSON Output:\n{raw_response}")
 
         parsed_data = json.loads(raw_response)
+
+        if "items" not in parsed_data or not isinstance(parsed_data["items"], list):
+            logger.error(
+                "🚨 LLM Schema Violation: 'items' array missing or malformed in JSON response."
+            )
+
         return parsed_data
+    except json.JSONDecodeError as e:
+        logger.error(f"🚨 LLM returned invalid, non-parseable JSON structure: {e}")
+        return None
     except Exception as e:
         logger.error(f"Groq intelligent document parser error: {e}", exc_info=True)
         return None
 
 
 def extract_receipt_data_fallback(lines, full_text_dump: str):
-    """
-    Regex-based fallback parser invoked when the LLM returns no usable items.
-
-    FIX: Parameter renamed from `text_blob` (raw ungrouped tokens) to `full_text_dump`
-    (properly grouped lines). The old code passed the raw token dump where individual
-    OCR tokens are joined by newlines — so a multi-word store keyword like
-    "coldhams lane" would appear as "coldhams\\nlane" and never match.
-    """
+    """Regex-based fallback parser invoked when the LLM returns no usable items."""
     store_name = detect_store(full_text_dump)
     items = []
     for line in lines:
@@ -327,7 +321,13 @@ def extract_receipt_data_fallback(lines, full_text_dump: str):
             continue
         match = PRICE_PATTERN.search(line)
         if match:
-            clean_price_str = re.sub(r"[£€Ee\s]", "", match.group(1)).replace(",", ".")
+            clean_price_str = (
+                re.sub(r"[£€Ee\s]", "", match.group(1))
+                .replace(",", ".")
+                .replace("R", ".")
+                .replace("}", ".")
+                .replace(":", ".")
+            )
             try:
                 price = float(clean_price_str)
                 desc = line[: match.start()].strip()
@@ -338,17 +338,10 @@ def extract_receipt_data_fallback(lines, full_text_dump: str):
             except ValueError:
                 continue
 
-    # FIX: Log what the fallback actually found — previously this path was completely silent,
-    # making it impossible to distinguish "fallback extracted items that didn't match the DB"
-    # from "fallback also extracted 0 items".
     logger.info(
-        f"Regex fallback extracted {len(items)} items: "
-        f"{[i['raw_string'] for i in items]}"
+        f"Regex fallback extracted {len(items)} items: {[i['raw_string'] for i in items]}"
     )
 
-    # FIX: Secondary recovery for receipts where EasyOCR's line grouping fails to combine
-    # a right-aligned price with its item name (e.g. on wavy thermal paper). Instead of
-    # returning 0 items, attempt to pair name-only lines with adjacent price-only lines.
     if not items:
         logger.warning(
             "⚠️ Primary regex pass found 0 items. Trying orphaned price pairing..."
@@ -364,10 +357,7 @@ def extract_receipt_data_fallback(lines, full_text_dump: str):
 
 
 def extract_receipt_data(file_bytes: bytes):
-    """
-    Core parsing script. Processes raw bytes from an image
-    and outputs a structured dictionary.
-    """
+    """Core processing script. Parses raw image streams into structured payloads."""
     if reader is None:
         logger.warning(
             "Executing in Lean Production Web Layer. Direct OCR execution disabled."
@@ -380,8 +370,6 @@ def extract_receipt_data(file_bytes: bytes):
         clean_bytes = preprocess_image(file_bytes)
         results = reader.readtext(clean_bytes, detail=1)
 
-        # FIX: Log how many regions EasyOCR found — if this is 0 or very low, the
-        # image preprocessing or reader itself is failing.
         logger.info(f"EasyOCR detected {len(results)} text regions from image")
 
         straightened_results = deskew_positions(results)
@@ -389,7 +377,6 @@ def extract_receipt_data(file_bytes: bytes):
         full_text_dump = "\n".join(lines)
 
         logger.info(f"Raw Extracted Text Length: {len(full_text_dump)} chars")
-        # FIX: Was logger.debug — changed to INFO so OCR quality is always auditable.
         logger.info(f"Raw Extracted Text Dump:\n{full_text_dump}")
 
         structured_data = extract_receipt_data_via_llm(full_text_dump)
@@ -410,10 +397,6 @@ def extract_receipt_data(file_bytes: bytes):
                 }
 
         if structured_data and "items" in structured_data:
-
-            # FIX: Expanded key normalization — the old code only tried "name" and
-            # "description". When the LLM uses any other alias, items silently dropped.
-            # Now iterates a broad alias list and logs whenever a heal is applied.
             for item in structured_data.get("items", []):
                 if "raw_string" not in item:
                     for alias in _ITEM_NAME_ALIASES:
@@ -436,8 +419,6 @@ def extract_receipt_data(file_bytes: bytes):
                 logger.warning(
                     "⚠️ AI returned no valid items. Triggering regex structure fallback..."
                 )
-                # FIX: Was `text_blob` (raw ungrouped token dump). Now passes
-                # `full_text_dump` so multi-word store keywords reliably match.
                 return extract_receipt_data_fallback(lines, full_text_dump)
 
             for item in structured_data["items"]:
@@ -517,7 +498,6 @@ def extract_receipt_data(file_bytes: bytes):
             return structured_data
 
         logger.warning("⚠️ AI layer unaligned. Triggering regex structure fallback...")
-        # FIX: Same as above — pass full_text_dump instead of raw text_blob.
         return extract_receipt_data_fallback(lines, full_text_dump)
 
     except Exception as e:

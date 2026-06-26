@@ -15,16 +15,11 @@ client = Groq(api_key=groq_key) if groq_key else None
 
 
 def resolve_unmatched_entity(raw_string: str, discount_type: str = None) -> dict:
-    """
-    Leverages Groq to semantic-clean an unrecognized receipt string,
-    utilizing a plain-text name seed matrix to group item variations.
-    """
+    """Leverages Groq to semantic-clean an unrecognized receipt string, grouping variation variants."""
     if not raw_string or not raw_string.strip():
         return {"action": "skip"}
 
-    # --- 🛡️ NEW: HARD PYTHON JUNK SHIELD 🛡️ ---
-    # If the string is short (< 8 chars) and contains 2 or fewer letters
-    # (e.g., '0,90 B', 'A', '1.49'), it's a floating tax code or price fragment. Kill it.
+    # --- 🛡️ HARD PYTHON JUNK SHIELD 🛡️ ---
     letter_count = len(re.sub(r"[^A-Za-z]", "", raw_string))
     if len(raw_string.strip()) < 8 and letter_count <= 2:
         logger.info(f"🛡️ Python Regex Guard blocked junk fragment: '{raw_string}'")
@@ -37,7 +32,6 @@ def resolve_unmatched_entity(raw_string: str, discount_type: str = None) -> dict
         )
         return {"action": "skip"}
 
-    # 1. Instruct the LLM using static examples rather than dumping the whole database table
     system_instruction = (
         "You are an expert data engineer specializing in retail product text sanitization and string alignment.\n"
         "Your task is to analyze a messy, raw grocery receipt item string and normalize it into a clean, human-readable product name.\n"
@@ -72,35 +66,44 @@ def resolve_unmatched_entity(raw_string: str, discount_type: str = None) -> dict
         "- 'biOTIfUL Kefir' -> Cleaned: 'Biotiful Kefir', Category: 'Dairy', size_value: null, size_unit: null\n"
     )
 
-    user_content = f"Raw Receipt Line Entry to Process:\n'{raw_string}'"
-    if discount_type:
-        user_content += f"\nContextual Hint (Discount Program): '{discount_type}'"
+    logger.info(
+        f"🔍 Matcher Input: Evaluating raw token: '{raw_string}' (Discount Hint Context: {discount_type})"
+    )
 
     try:
-        # 2. Execute a highly targeted completion request (using minimal tokens)
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": system_instruction},
-                {"role": "user", "content": user_content},
+                {
+                    "role": "user",
+                    "content": f"Raw Receipt Line Entry to Process:\n'{raw_string}'"
+                    + (
+                        f"\nContextual Hint (Discount Program): '{discount_type}'"
+                        if discount_type
+                        else ""
+                    ),
+                },
             ],
-            temperature=0.0,  # Zero temperature ensures clean, deterministic text mapping
+            temperature=0.0,
             response_format={"type": "json_object"},
         )
 
         ai_payload = json.loads(completion.choices[0].message.content)
         cleaned_name = ai_payload.get("cleaned_name", "").strip()
-
-        # Pull the category, but default to Miscellaneous if it fails
         category = ai_payload.get("category", "Miscellaneous").strip()
-
-        # Hard fallback just in case the LLM specifically returned an empty string ""
         category = category if category else "Miscellaneous"
 
         if not cleaned_name:
+            logger.warning(
+                f"⚠️ Matcher Output: AI elected to drop tracking fragment: '{raw_string}'"
+            )
             return {"action": "skip"}
 
-        # 3. Use an isolated case-insensitive text check against known master records
+        logger.info(
+            f"🎯 Matcher Output: Transformed '{raw_string}' -> '{cleaned_name}' (Assigned Category: {category})"
+        )
+
         db_match = execute_query(
             "SELECT id, category FROM master_items WHERE canonical_name ILIKE %s LIMIT 1;",
             (cleaned_name,),
