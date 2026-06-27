@@ -168,6 +168,39 @@ export default function Page() {
     };
   }, [activeUser]);
 
+  useEffect(() => {
+    if (!token || !activeUser) return;
+
+    const fetchHeaders: HeadersInit = { "Authorization": `Bearer ${token}` };
+
+    const checkNotifications = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/notifications?unread_only=true`, { headers: fetchHeaders });
+        if (!res.ok) return;
+        const data = await res.json();
+        const latest = data.notifications?.[0];
+
+        if (latest && !latest.is_read) {
+          setLiveDropAlert(latest.message);
+
+          fetch(`${API_BASE}/api/notifications/read`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...fetchHeaders },
+            body: JSON.stringify({ notification_ids: [latest.id] }),
+          }).catch(err => console.error("Notification acknowledgment failed:", err));
+        }
+      } catch (err) {
+        console.error("Notification poll error:", err);
+      }
+    };
+
+    // Run once immediately on mount, then every 20 seconds
+    checkNotifications();
+    const intervalId = setInterval(checkNotifications, 20_000);
+    return () => clearInterval(intervalId);
+
+  }, [token, activeUser, API_BASE]);
+
   // --- ASYNC RECEIPT POLLING LOGIC ---
   useEffect(() => {
     if (!pollingReceiptId) return;
