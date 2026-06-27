@@ -4,12 +4,6 @@
       "root": "frontend",
       "routePrefix": "/",
       "framework": "nextjs"
-    },
-    "backend": {
-      "root": "backend",
-      "routePrefix": "/api",
-      "builder": "@vercel/python",
-      "entrypoint": "api/index.py"
     }
   }
 }
