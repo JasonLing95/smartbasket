@@ -140,35 +140,104 @@ async def notify_user(username: str, message: str):
 async def process_alerts_background(
     item_ids: List[str], store_name: str, new_prices: List[float]
 ):
+    logger.info(
+        f"⚡ [ALERT ENGINE] Background task spawned. Received {len(item_ids)} item(s) from store '{store_name}'."
+    )
+
     pool = get_db_pool()
     conn = pool.getconn()
+    import sys
+
     try:
         with conn.cursor() as cursor:
-            for item_id, price in zip(item_ids, new_prices):
+            for idx, (item_id, price) in enumerate(zip(item_ids, new_prices)):
+                # Log 1: Tracking input payloads
+                logger.info(
+                    f"🔍 [ALERT ENGINE] Evaluating Item [{idx+1}/{len(item_ids)}]: ID={item_id} (Type: {type(item_id).__name__}) | Price=£{price:.2f}"
+                )
+                sys.stdout.flush()
+
                 basket_query = """
-                    SELECT DISTINCT user_id FROM user_baskets 
-                    WHERE master_item_id = %s::uuid AND last_known_price > %s;
+                    SELECT DISTINCT user_id, preferred_store, last_known_price 
+                    FROM user_baskets 
+                    WHERE master_item_id = %s 
+                      AND last_known_price > %s;
                 """
-                cursor.execute(basket_query, (item_id, price))
+
+                # Coerce explicitly to a standard string format to safeguard driver translation mapping
+                clean_item_id = str(item_id).strip()
+                float_price = float(price)
+
+                cursor.execute(basket_query, (clean_item_id, float_price))
                 matches = cursor.fetchall()
+
+                # Log 2: Query Matching Analysis
+                if not matches:
+                    logger.info(
+                        f"ℹ️ [ALERT ENGINE] Database scan complete for item {clean_item_id}. Zero users matched criteria (No basket contains this item with a price > £{float_price:.2f})."
+                    )
+                    sys.stdout.flush()
+                    continue
+
+                logger.info(
+                    f"🎯 [ALERT ENGINE] Found {len(matches)} user basket(s) eligible for price drop alert!"
+                )
+                sys.stdout.flush()
 
                 for user in matches:
                     username = user[0]
+                    tracked_store = user[1]
+                    tracked_price = user[2]
+
+                    logger.info(
+                        f"👤 [ALERT ENGINE] Processing match for user '{username}' (Tracked Price: £{tracked_price:.2f} at {tracked_store})."
+                    )
+                    sys.stdout.flush()
+
                     live_message = f"🔥 Live Price Drop: {store_name} just scanned an item on your list for £{price:.2f}!"
 
-                    # 1. PERMANENTLY RECORD TO DISK INBOX FIRST
+                    # Log 3: Database write attempt tracking
+                    logger.info(
+                        f"💾 [ALERT ENGINE] Attempting database inbox insert for '{username}'..."
+                    )
+                    sys.stdout.flush()
+
                     cursor.execute(
                         "INSERT INTO user_notifications (username, message) VALUES (%s, %s);",
                         (username, live_message),
                     )
                     conn.commit()
 
-                    # 2. Inform the memory channel to wake up if the socket is alive
+                    logger.info(
+                        f"✅ [ALERT ENGINE] Inbox record successfully committed to DB for '{username}'."
+                    )
+                    sys.stdout.flush()
+
+                    # Log 4: Live Event Streaming memory array evaluation
                     if username in active_connections:
+                        logger.info(
+                            f"📱 [ALERT ENGINE] Active connection found for '{username}'. Pushing message to real-time stream queue."
+                        )
+                        sys.stdout.flush()
                         await active_connections[username].put("NEW_NOTIFICATION")
+                    else:
+                        logger.warning(
+                            f"💤 [ALERT ENGINE] User '{username}' is offline or disconnected. Alert saved to database inbox; live push skipped."
+                        )
+                        sys.stdout.flush()
+
     except Exception as e:
-        logger.error(f"Background alert failure: {e}")
+        # Log 5: Catching full runtime stack traces
+        logger.error(
+            f"💥 [ALERT ENGINE] CRITICAL CRASH inside alert evaluation module: {e}",
+            exc_info=True,
+        )
+        sys.stdout.flush()
     finally:
+        logger.info(
+            "🔌 [ALERT ENGINE] Releasing database connection handle back to pool."
+        )
+        sys.stdout.flush()
         pool.putconn(conn)
 
 
