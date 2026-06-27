@@ -42,6 +42,8 @@ APP_ENV = os.getenv("APP_ENV", "development")
 app = FastAPI(docs_url="/docs", openapi_url="/openapi.json")
 api_router = APIRouter(prefix="/api")
 
+app.include_router(api_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
