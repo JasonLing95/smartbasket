@@ -288,45 +288,6 @@ async def sse_alerts(username: str):
 # --- Core Processing Engines ---
 
 
-async def process_alerts_background(
-    item_ids: List[str], store_name: str, new_prices: List[float]
-):
-    pool = get_db_pool()
-    conn = pool.getconn()
-    import sys  # Used to force-flush background terminal logs
-
-    try:
-        with conn.cursor() as cursor:
-            for item_id, price in zip(item_ids, new_prices):
-                # ✅ FIXED: Removed 'preferred_store != %s' so same-store price drops trigger alerts too!
-                basket_query = "SELECT DISTINCT user_id, preferred_store, last_known_price FROM user_baskets WHERE master_item_id = %s::uuid AND last_known_price > %s;"
-                cursor.execute(basket_query, (item_id, price))
-
-                matches = cursor.fetchall()
-                if not matches:
-                    logger.info(
-                        f"🔍 No users found tracking item {item_id} at a price higher than £{price:.2f}."
-                    )
-                    sys.stdout.flush()
-
-                for user in matches:
-                    username = user[0]
-                    logger.info(
-                        f"📢 ALERT: SQL Trigger matched! Pushing live notification to {username}..."
-                    )
-                    sys.stdout.flush()
-
-                    # ⚡ Fire the message down the persistent HTTP stream!
-                    live_message = f"🔥 Live Price Drop: {store_name} just scanned an item on your list for £{price:.2f}!"
-                    await notify_user(username, live_message)
-
-    except Exception as e:
-        logger.info(f"Background alert failure: {e}")
-        sys.stdout.flush()
-    finally:
-        pool.putconn(conn)
-
-
 def execute_receipt_ingestion_hash_upgraded(
     user_id: Optional[str],
     store_name: str,
