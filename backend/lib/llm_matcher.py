@@ -107,6 +107,8 @@ def resolve_unmatched_entity(
         action = ai_payload.get("action")
         cleaned_name = ai_payload.get("cleaned_name", "").strip()
 
+        logger.info(f"🧠 Full matcher response: {json.dumps(ai_payload, indent=2)}")
+
         if not cleaned_name or action == "skip":  # keep your skip logic
             return {"action": "skip"}
 
