@@ -142,6 +142,8 @@ async def process_alerts_background(
 ):
     pool = get_db_pool()
     conn = pool.getconn()
+    import sys
+
     try:
         with conn.cursor() as cursor:
             for item_id, price in zip(item_ids, new_prices):
@@ -156,24 +158,32 @@ async def process_alerts_background(
                     username = user[0]
                     live_message = f"🔥 Live Price Drop: {store_name} just scanned an item on your list for £{price:.2f}!"
 
-                    # 1. PERSIST TO DB INBOX FIRST
+                    # 1. PERSIST TO DATABASE INBOX FIRST
                     cursor.execute(
                         "INSERT INTO user_notifications (username, message) VALUES (%s, %s);",
                         (username, live_message),
                     )
                     conn.commit()
 
-                    # 2. Alert the active memory channel if alive
+                    logger.info(
+                        f"📢 ALERT: Persisted notification to DB inbox for {username}."
+                    )
+                    sys.stdout.flush()
+
+                    # 2. Alert the active memory channel if online
                     if username in active_connections:
                         await active_connections[username].put("NEW_NOTIFICATION")
+
     except Exception as e:
-        logger.error(f"Background alert failure: {e}")
+        logger.info(f"Background alert failure: {e}")
+        sys.stdout.flush()
     finally:
         pool.putconn(conn)
 
 
 @api_router.get("/stream/alerts")
 async def sse_alerts(username: str):
+    """Maintains a persistent connection to pump unread inbox notifications and live alerts."""
     if username not in active_connections:
         active_connections[username] = asyncio.Queue()
 
@@ -181,31 +191,36 @@ async def sse_alerts(username: str):
         try:
             while True:
                 try:
-                    # Clear unread alerts on connection startup or loop awake
+                    # 1. Look for unread alerts waiting in the DB inbox
                     unread = execute_query(
                         "SELECT id, message FROM user_notifications WHERE username = %s AND is_read = FALSE;",
                         (username,),
                     )
+
+                    # 2. Stream accumulated alerts to the user
                     for notif_id, msg in unread:
                         yield f"data: {msg}\n\n"
+                        # Mark it as read so they don't see it again next time they refresh
                         execute_query(
                             "UPDATE user_notifications SET is_read = TRUE WHERE id = %s::uuid;",
                             (notif_id,),
                             commit=True,
                         )
 
-                    # Wait on memory trigger block for 15 seconds max (Heartbeat)
+                    # 3. Rest quietly on the queue until a new background job awakes us (Max 15 seconds)
                     await asyncio.wait_for(
                         active_connections[username].get(), timeout=15.0
                     )
 
                 except asyncio.TimeoutError:
-                    # Send standard comment line to keep proxies from dropping the socket
+                    # 4. Stream a transparent heartbeat ping to keep the connection alive
                     yield ": heartbeat\n\n"
-                except Exception as loop_err:
-                    logger.error(f"SSE loop err: {loop_err}")
-                    await asyncio.sleep(2)
+                except Exception as inner_err:
+                    logger.error(f"Error in SSE loop: {inner_err}")
+                    await asyncio.sleep(2)  # Backoff defensively on error
+
         except asyncio.CancelledError:
+            # Clean up the connection if the user closes the browser
             active_connections.pop(username, None)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
