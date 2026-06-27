@@ -2,7 +2,8 @@
 import os
 import psycopg2
 from psycopg2 import pool
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
+import re
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,37 +16,36 @@ def get_db_pool():
     if _connection_pool is not None:
         return _connection_pool
 
-    # --- 1. DISCRETE VARIABLES (Recommended: No URL encoding needed) ---
-    db_host = os.environ.get("DB_HOST")
-    db_user = os.environ.get("DB_USER", "postgres")
-    db_pass = os.environ.get("DB_PASSWORD")
-    db_name = os.environ.get("DB_NAME", "postgres")
-    db_port = os.environ.get("DB_PORT", "5432")
+    database_url = os.environ.get("DATABASE_URL")
+
+    if not database_url:
+        raise ValueError("[-] CRITICAL: DATABASE_URL environment variable is missing.")
 
     try:
-        # If the explicit host and password exist, use the raw connection method
-        if db_host and db_pass:
-            _connection_pool = pool.ThreadedConnectionPool(
-                minconn=1,
-                maxconn=10,
-                host=db_host,
-                port=db_port,
-                user=db_user,
-                password=db_pass,
-                database=db_name,
-                sslmode="require" if "amazonaws.com" in db_host else "prefer",
-            )
-            return _connection_pool
+        # 🛡️ AUTOMATIC ENCODING SHIELD 🛡️
+        # If the password has special characters and isn't encoded, let's catch it here.
+        # This matches standard connection string anatomy: postgresql://user:pass@host:port/db
+        match = re.match(
+            r"(postgresql://)([^:]+):(.*)@([^@/]+:[0-9]+/[^@?]+)", database_url
+        )
 
-        # --- 2. FALLBACK: URL PARSING ---
-        database_url = os.environ.get("DATABASE_URL")
+        if match:
+            protocol, username, raw_password, trailing_uri = match.groups()
 
-        if not database_url:
-            raise ValueError(
-                "[-] CRITICAL: Database credentials missing. Provide DB_HOST/DB_PASSWORD or DATABASE_URL."
-            )
+            # Check if the password contains unencoded symbols that break urlparse
+            if (
+                any(char in raw_password for char in ["@", "#", ":", "/", "?", "="])
+                and "%" not in raw_password
+            ):
+                logger.info(
+                    "⚙️ Unencoded special characters detected in DATABASE_URL password. Auto-healing string configurations..."
+                )
+                encoded_password = quote(raw_password)
+                database_url = f"{protocol}{username}:{encoded_password}@{trailing_uri}"
 
+        # Proceed to parse the safely prepared/healed connection string
         parsed_url = urlparse(database_url)
+
         _connection_pool = pool.ThreadedConnectionPool(
             minconn=1,
             maxconn=10,
@@ -61,7 +61,6 @@ def get_db_pool():
             ),
         )
         return _connection_pool
-
     except Exception as e:
         logger.error(
             f"❌ Connection pool initialization engine failed: {e}", exc_info=True
