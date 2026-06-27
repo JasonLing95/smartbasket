@@ -160,8 +160,8 @@ async def process_alerts_background(
                 basket_query = """
                     SELECT DISTINCT user_id, preferred_store, last_known_price 
                     FROM user_baskets 
-                    WHERE master_item_id = %s 
-                      AND last_known_price > %s;
+                    WHERE master_item_id = %s::uuid
+                    AND last_known_price > %s;
                 """
 
                 # Coerce explicitly to a standard string format to safeguard driver translation mapping
@@ -506,7 +506,9 @@ def execute_receipt_ingestion_hash_upgraded(
                 """
                 INSERT INTO user_baskets (user_id, master_item_id, preferred_store, last_known_price, quantity) 
                 VALUES (%s, %s::uuid, %s, %s, %s) 
-                ON CONFLICT (user_id, master_item_id) DO UPDATE SET quantity = user_baskets.quantity + EXCLUDED.quantity;
+                ON CONFLICT (user_id, master_item_id) DO UPDATE 
+                SET quantity = user_baskets.quantity + EXCLUDED.quantity,
+                    last_known_price = EXCLUDED.last_known_price;
                 """,
                 (user_id, master_item_id, store_name_clean, unit_price, quantity),
                 commit=True,
@@ -1086,7 +1088,9 @@ def add_to_basket(
                 (SELECT COALESCE(MIN(COALESCE(loyalty_price, base_price)), 1.50) FROM price_history WHERE master_item_id = %s::uuid), 
                 %s
             ) 
-            ON CONFLICT (user_id, master_item_id) DO UPDATE SET quantity = user_baskets.quantity + EXCLUDED.quantity;
+            ON CONFLICT (user_id, master_item_id) DO UPDATE 
+            SET quantity = user_baskets.quantity + EXCLUDED.quantity,
+                last_known_price = LEAST(user_baskets.last_known_price, EXCLUDED.last_known_price);
         """
         execute_query(
             query,
