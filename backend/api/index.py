@@ -223,7 +223,7 @@ async def process_alerts_background(
                             f"📱 [ALERT ENGINE] Active connection found for '{username}'. Pushing message to real-time stream queue."
                         )
                         sys.stdout.flush()
-                        await active_connections[username].put("NEW_NOTIFICATION")
+                        await active_connections[username].put(live_message)
                     else:
                         logger.warning(
                             f"💤 [ALERT ENGINE] User '{username}' is offline or disconnected. Alert saved to database inbox; live push skipped."
@@ -258,30 +258,19 @@ async def sse_alerts(username: str):
                     break
 
                 try:
-                    # 1. Rest on the queue FIRST. Only wake up when a LIVE ingestion happens.
-                    await asyncio.wait_for(user_queue.get(), timeout=15.0)
-
-                    # 2. Now that a live event happened, drain any unread items safely
-                    unread = execute_query(
-                        "SELECT id, message FROM user_notifications WHERE username = %s AND is_read = FALSE;",
-                        (username,),
+                    # Wait here until the background worker puts a message into the queue
+                    msg_from_queue = await asyncio.wait_for(
+                        user_queue.get(), timeout=15.0
                     )
 
-                    for notif_id, msg in unread:
-                        yield f"data: {msg}\n\n"
-                        execute_query(
-                            "UPDATE user_notifications SET is_read = TRUE WHERE id = %s::uuid;",
-                            (notif_id,),
-                            commit=True,
-                        )
+                    # Stream the real-time message immediately down to the browser
+                    yield f"data: {msg_from_queue}\n\n"
 
                 except asyncio.TimeoutError:
-                    # Stream heartbeat comment to maintain infrastructure connection
                     yield ": heartbeat\n\n"
                 except Exception as inner_err:
                     if username not in active_connections:
                         break
-                    logger.error(f"SSE loop error: {inner_err}")
                     await asyncio.sleep(2)
         except asyncio.CancelledError:
             active_connections.pop(username, None)
