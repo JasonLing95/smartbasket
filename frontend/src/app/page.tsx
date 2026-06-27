@@ -215,6 +215,13 @@ export default function Page() {
           fetch(`${API_BASE}/api/receipts`, { headers: fetchHeaders })
         ]);
 
+        const notifRes = await fetch(`${API_BASE}/api/notifications`, { headers: fetchHeaders });
+        if (notifRes.ok) {
+            const notifData = await notifRes.json();
+            const latest = notifData.notifications?.[0];
+            if (latest) setLiveDropAlert(latest.message);
+        }
+
         if (basketRes.status === 401) { handleLogout(); return; }
         const basketData = await basketRes.json();
         const itemsData = await itemsRes.json();

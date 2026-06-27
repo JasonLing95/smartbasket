@@ -1253,4 +1253,16 @@ async def get_spend_analytics(authorization: Optional[str] = Header(None)):
         )
 
 
+@api_router.get("/notifications")
+def get_notifications(authorization: Optional[str] = Header(None)):
+    username = get_user_from_token(authorization)
+    rows = execute_query(
+        """SELECT id, message, created_at FROM user_notifications 
+           WHERE username = %s 
+           ORDER BY created_at DESC LIMIT 20;""",
+        (username,),
+    )
+    return {"notifications": [{"id": str(r[0]), "message": r[1]} for r in rows]}
+
+
 app.include_router(api_router)
