@@ -149,14 +149,13 @@ export default function Page() {
       eventSource = new EventSource(`${API_BASE}/api/stream/alerts?username=${encodeURIComponent(activeUser!)}`);
 
       eventSource.onmessage = (event) => {
-        // Direct UI mutation without triggering cascading metrics re-renders
+        // Direct UI state mutation—does not trigger cascading dashboard refreshes
         setLiveDropAlert(event.data);
       };
 
       eventSource.onerror = () => {
-        console.warn("SSE link broken. Retrying in stable window...");
         if (eventSource) eventSource.close();
-        // Linear backoff logic prevents flooding your servers when connections drop
+        // Backoff mechanism avoids slamming your server if it drops
         retryTimeout = setTimeout(connectStream, 5000); 
       };
     }

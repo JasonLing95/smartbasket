@@ -142,8 +142,6 @@ async def process_alerts_background(
 ):
     pool = get_db_pool()
     conn = pool.getconn()
-    import sys
-
     try:
         with conn.cursor() as cursor:
             for item_id, price in zip(item_ids, new_prices):
@@ -158,49 +156,36 @@ async def process_alerts_background(
                     username = user[0]
                     live_message = f"🔥 Live Price Drop: {store_name} just scanned an item on your list for £{price:.2f}!"
 
-                    # 1. PERSIST TO DATABASE INBOX FIRST
+                    # 1. PERMANENTLY RECORD TO DISK INBOX FIRST
                     cursor.execute(
                         "INSERT INTO user_notifications (username, message) VALUES (%s, %s);",
                         (username, live_message),
                     )
                     conn.commit()
 
-                    logger.info(
-                        f"📢 ALERT: Persisted notification to DB inbox for {username}."
-                    )
-                    sys.stdout.flush()
-
-                    # 2. Alert the active memory channel if online
+                    # 2. Inform the memory channel to wake up if the socket is alive
                     if username in active_connections:
                         await active_connections[username].put("NEW_NOTIFICATION")
-
     except Exception as e:
-        logger.info(f"Background alert failure: {e}")
-        sys.stdout.flush()
+        logger.error(f"Background alert failure: {e}")
     finally:
         pool.putconn(conn)
 
 
 @api_router.get("/stream/alerts")
 async def sse_alerts(username: str):
-    """Maintains a persistent connection to pump unread inbox notifications and live alerts."""
-    # Ensure the user's queue exists when they open the endpoint
     if username not in active_connections:
         active_connections[username] = asyncio.Queue()
 
     async def event_generator():
         try:
             while True:
-                # 1. Check if the queue was wiped out by a connection cancel or shutdown
                 user_queue = active_connections.get(username)
                 if user_queue is None:
-                    logger.info(
-                        f"🔌 Connection slot for {username} closed cleanly. Exiting stream."
-                    )
                     break
 
                 try:
-                    # 2. Sweep unread database entries
+                    # 1. Drain any pending items waiting in the database inbox
                     unread = execute_query(
                         "SELECT id, message FROM user_notifications WHERE username = %s AND is_read = FALSE;",
                         (username,),
@@ -214,22 +199,19 @@ async def sse_alerts(username: str):
                             commit=True,
                         )
 
-                    # 3. Safe dictionary reference to wait on the channel
+                    # 2. Rest on the queue until background ingestion awakes us
                     await asyncio.wait_for(user_queue.get(), timeout=15.0)
 
                 except asyncio.TimeoutError:
+                    # 3. Stream heartbeat comment to maintain infrastructure connection
                     yield ": heartbeat\n\n"
                 except Exception as inner_err:
-                    # If the error is due to a closing connection, terminate the loop instead of spinning
                     if username not in active_connections:
                         break
-                    logger.error(f"Inner SSE error: {inner_err}")
+                    logger.error(f"SSE loop error: {inner_err}")
                     await asyncio.sleep(2)
-
         except asyncio.CancelledError:
-            # Safely pop the user connection on termination
             active_connections.pop(username, None)
-            logger.info(f"Cleaned up active connection track for {username}.")
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
