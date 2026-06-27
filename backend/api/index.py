@@ -184,44 +184,52 @@ async def process_alerts_background(
 @api_router.get("/stream/alerts")
 async def sse_alerts(username: str):
     """Maintains a persistent connection to pump unread inbox notifications and live alerts."""
+    # Ensure the user's queue exists when they open the endpoint
     if username not in active_connections:
         active_connections[username] = asyncio.Queue()
 
     async def event_generator():
         try:
             while True:
+                # 1. Check if the queue was wiped out by a connection cancel or shutdown
+                user_queue = active_connections.get(username)
+                if user_queue is None:
+                    logger.info(
+                        f"🔌 Connection slot for {username} closed cleanly. Exiting stream."
+                    )
+                    break
+
                 try:
-                    # 1. Look for unread alerts waiting in the DB inbox
+                    # 2. Sweep unread database entries
                     unread = execute_query(
                         "SELECT id, message FROM user_notifications WHERE username = %s AND is_read = FALSE;",
                         (username,),
                     )
 
-                    # 2. Stream accumulated alerts to the user
                     for notif_id, msg in unread:
                         yield f"data: {msg}\n\n"
-                        # Mark it as read so they don't see it again next time they refresh
                         execute_query(
                             "UPDATE user_notifications SET is_read = TRUE WHERE id = %s::uuid;",
                             (notif_id,),
                             commit=True,
                         )
 
-                    # 3. Rest quietly on the queue until a new background job awakes us (Max 15 seconds)
-                    await asyncio.wait_for(
-                        active_connections[username].get(), timeout=15.0
-                    )
+                    # 3. Safe dictionary reference to wait on the channel
+                    await asyncio.wait_for(user_queue.get(), timeout=15.0)
 
                 except asyncio.TimeoutError:
-                    # 4. Stream a transparent heartbeat ping to keep the connection alive
                     yield ": heartbeat\n\n"
                 except Exception as inner_err:
-                    logger.error(f"Error in SSE loop: {inner_err}")
-                    await asyncio.sleep(2)  # Backoff defensively on error
+                    # If the error is due to a closing connection, terminate the loop instead of spinning
+                    if username not in active_connections:
+                        break
+                    logger.error(f"Inner SSE error: {inner_err}")
+                    await asyncio.sleep(2)
 
         except asyncio.CancelledError:
-            # Clean up the connection if the user closes the browser
+            # Safely pop the user connection on termination
             active_connections.pop(username, None)
+            logger.info(f"Cleaned up active connection track for {username}.")
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
