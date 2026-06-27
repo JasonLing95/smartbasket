@@ -2,7 +2,7 @@
 import os
 import psycopg2
 from psycopg2 import pool
-from urllib.parse import urlparse, quote
+from urllib.parse import urlparse, quote, unquote
 import re
 import logging
 
@@ -16,51 +16,82 @@ def get_db_pool():
     if _connection_pool is not None:
         return _connection_pool
 
-    database_url = os.environ.get("DATABASE_URL")
-
-    if not database_url:
-        raise ValueError("[-] CRITICAL: DATABASE_URL environment variable is missing.")
+    # --- 1. DISCRETE VARIABLES ---
+    db_host = os.environ.get("DB_HOST")
+    db_user = os.environ.get("DB_USER", "postgres")
+    db_pass = os.environ.get("DB_PASSWORD")
+    db_name = os.environ.get("DB_NAME", "postgres")
+    db_port = os.environ.get("DB_PORT", "5432")
 
     try:
+        if db_host and db_pass:
+            logger.info(
+                f"🔧 DB Init [Discrete]: Host={db_host} | User={db_user} | DB={db_name} | PassLength={len(db_pass)}"
+            )
+            _connection_pool = pool.ThreadedConnectionPool(
+                minconn=1,
+                maxconn=10,
+                host=db_host,
+                port=db_port,
+                user=db_user,
+                password=db_pass,
+                database=db_name,
+                sslmode="require" if "amazonaws.com" in db_host else "prefer",
+            )
+            return _connection_pool
+
+        # --- 2. FALLBACK: URL PARSING ---
+        database_url = os.environ.get("DATABASE_URL")
+
+        if not database_url:
+            raise ValueError(
+                "[-] CRITICAL: Database credentials missing. Provide DB_HOST/DB_PASSWORD or DATABASE_URL."
+            )
+
         # 🛡️ AUTOMATIC ENCODING SHIELD 🛡️
-        # If the password has special characters and isn't encoded, let's catch it here.
-        # This matches standard connection string anatomy: postgresql://user:pass@host:port/db
         match = re.match(
             r"(postgresql://)([^:]+):(.*)@([^@/]+:[0-9]+/[^@?]+)", database_url
         )
-
         if match:
             protocol, username, raw_password, trailing_uri = match.groups()
-
-            # Check if the password contains unencoded symbols that break urlparse
             if (
                 any(char in raw_password for char in ["@", "#", ":", "/", "?", "="])
                 and "%" not in raw_password
             ):
                 logger.info(
-                    "⚙️ Unencoded special characters detected in DATABASE_URL password. Auto-healing string configurations..."
+                    "⚙️ Unencoded special characters detected in DATABASE_URL. Auto-healing..."
                 )
                 encoded_password = quote(raw_password)
                 database_url = f"{protocol}{username}:{encoded_password}@{trailing_uri}"
 
-        # Proceed to parse the safely prepared/healed connection string
         parsed_url = urlparse(database_url)
+
+        # 🔑 THE CRITICAL FIX: Decode the password back to raw text before giving it to PostgreSQL
+        final_password = unquote(parsed_url.password) if parsed_url.password else None
+        final_host = parsed_url.hostname
+        final_user = parsed_url.username
+        final_db = parsed_url.path.lstrip("/")
+
+        # 🔍 ENHANCED VISIBILITY LOGGING
+        # This will tell you exactly what Vercel is seeing without leaking the password
+        logger.info(
+            f"🔧 DB Init [URL]: Host={final_host} | User={final_user} | DB={final_db} | PassLength={len(final_password) if final_password else 0} | Contains '%': {'%' in final_password if final_password else False}"
+        )
 
         _connection_pool = pool.ThreadedConnectionPool(
             minconn=1,
             maxconn=10,
-            host=parsed_url.hostname,
+            host=final_host,
             port=parsed_url.port or 5432,
-            user=parsed_url.username,
-            password=parsed_url.password,
-            database=parsed_url.path.lstrip("/"),
+            user=final_user,
+            password=final_password,
+            database=final_db,
             sslmode=(
-                "require"
-                if parsed_url.hostname and "amazonaws.com" in parsed_url.hostname
-                else "prefer"
+                "require" if final_host and "amazonaws.com" in final_host else "prefer"
             ),
         )
         return _connection_pool
+
     except Exception as e:
         logger.error(
             f"❌ Connection pool initialization engine failed: {e}", exc_info=True
