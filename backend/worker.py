@@ -6,6 +6,7 @@ import boto3
 import logging
 import sys
 from dotenv import load_dotenv
+import asyncio
 
 load_dotenv()
 
@@ -32,7 +33,6 @@ s3 = boto3.client("s3", region_name=AWS_REGION)
 
 def poll_queue_loop():
     logger.info("🚀 SmartBasket Asynchronous Parsing Daemon is live and polling...")
-    bg_tasks = BackgroundTasks()
 
     while True:
         try:
@@ -92,6 +92,8 @@ def poll_queue_loop():
                         f"⏱️ [Trace: {file_hash}] OCR & Engine parsing completed in {elapsed_time:.2f}s"
                     )
 
+                    bg_tasks = BackgroundTasks()
+
                     if extracted and "store_name" in extracted:
                         receipt_id, processed_count = (
                             execute_receipt_ingestion_hash_upgraded(
@@ -104,6 +106,8 @@ def poll_queue_loop():
                                 receipt_date=extracted.get("date"),
                             )
                         )
+
+                        asyncio.run(bg_tasks())
 
                         if extracted["store_name"] == "REJECTED":
                             logger.warning(
