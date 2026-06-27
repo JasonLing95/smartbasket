@@ -1,0 +1,36 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # 1. Update the code
+            cd /home/ec2-user/smartbasket
+            git pull origin main
+            
+            # 2. Update dependencies (Optional but recommended)
+            cd /home/ec2-user/smartbasket/backend
+            source venv/bin/activate
+            pip install -r requirements.txt
+            
+            # 3. Restart the Services
+            # API: Your web server
+            sudo systemctl restart smartbasket-api
+            
+            # Worker: Your OCR daemon
+            sudo systemctl restart smartbasket-worker
+            
+            # 4. Verify status
+            sudo systemctl status smartbasket-api --no-pager
+            sudo systemctl status smartbasket-worker --no-pager

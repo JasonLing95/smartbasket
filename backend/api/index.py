@@ -19,6 +19,7 @@ from fastapi import (
     UploadFile,
     Header,
     Form,
+    APIRouter,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -39,6 +40,7 @@ logger = logging.getLogger(__name__)
 APP_ENV = os.getenv("APP_ENV", "development")
 
 app = FastAPI(docs_url="/docs", openapi_url="/openapi.json")
+api_router = APIRouter(prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,
@@ -134,7 +136,7 @@ async def notify_user(username: str, message: str):
         await active_connections[username].put(message)
 
 
-@app.get("/stream/alerts")
+@api_router.get("/stream/alerts")
 async def sse_alerts(username: str):
     """Maintains a persistent connection to the frontend to push live alerts."""
     if username not in active_connections:
@@ -383,7 +385,7 @@ def execute_receipt_ingestion_hash_upgraded(
 # --- Authentication Routers ---
 
 
-@app.post("/auth/register")
+@api_router.post("/auth/register")
 def register_account(payload: UserAuthPayload):
     if not payload.username or not payload.email or not payload.password:
         raise HTTPException(
@@ -420,7 +422,7 @@ def register_account(payload: UserAuthPayload):
     }
 
 
-@app.post("/auth/login")
+@api_router.post("/auth/login")
 def login_authenticate(payload: UserAuthPayload):
     user_record = execute_query(
         "SELECT password_hash FROM users WHERE username = %s;", (payload.username,)
@@ -442,7 +444,7 @@ def login_authenticate(payload: UserAuthPayload):
     return {"status": "success", "token": session_token, "username": payload.username}
 
 
-@app.post("/auth/logout")
+@api_router.post("/auth/logout")
 def logout_session(authorization: Optional[str] = Header(None)):
     if authorization and authorization.startswith("Bearer "):
         execute_query(
@@ -456,7 +458,7 @@ def logout_session(authorization: Optional[str] = Header(None)):
 # --- Secured Application Routers ---
 
 
-@app.post("/receipts/upload")
+@api_router.post("/receipts/upload")
 async def upload_real_receipt(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
@@ -575,7 +577,7 @@ async def upload_real_receipt(
             raise HTTPException(status_code=500, detail=f"Async queue fail: {str(e)}")
 
 
-@app.get("/receipts/{file_hash}/status")
+@api_router.get("/receipts/{file_hash}/status")
 def check_receipt_status(file_hash: str):
     try:
         record = execute_query(
@@ -602,7 +604,7 @@ def check_receipt_status(file_hash: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/receipts/{receipt_id}")
+@api_router.get("/receipts/{receipt_id}")
 def get_receipt_details(receipt_id: str, authorization: Optional[str] = Header(None)):
     try:
         meta_query = "SELECT store_name, total_spent, TO_CHAR(date, 'DD Mon YYYY HH24:MI') FROM receipts WHERE id = %s;"
@@ -632,7 +634,7 @@ def get_receipt_details(receipt_id: str, authorization: Optional[str] = Header(N
         )
 
 
-@app.get("/basket/compare")
+@api_router.get("/basket/compare")
 async def compare_basket(
     friction_penalty: float = 0.0, authorization: Optional[str] = Header(None)
 ):
@@ -778,7 +780,7 @@ async def compare_basket(
         )
 
 
-@app.get("/alerts")
+@api_router.get("/alerts")
 async def get_active_alerts(authorization: Optional[str] = Header(None)):
     user_id = get_optional_user(authorization)
     try:
@@ -843,7 +845,7 @@ async def get_active_alerts(authorization: Optional[str] = Header(None)):
 
 
 # api/index.py
-@app.get("/catalog/search")
+@api_router.get("/catalog/search")
 def search_catalog(q: str = ""):
     if not q:
         return {"results": []}
@@ -872,7 +874,7 @@ def search_catalog(q: str = ""):
         raise HTTPException(status_code=500, detail=f"Catalog filter failure: {e}")
 
 
-@app.get("/catalog/all")
+@api_router.get("/catalog/all")
 def get_all_catalog(page: int = 1, limit: int = 10):
     try:
         offset = (page - 1) * limit
@@ -904,7 +906,7 @@ def get_all_catalog(page: int = 1, limit: int = 10):
         raise HTTPException(status_code=500, detail=f"Catalog fetch failure: {e}")
 
 
-@app.get("/catalog/item/{item_id}/variants")
+@api_router.get("/catalog/item/{item_id}/variants")
 def get_item_store_variants(item_id: str):
     try:
         query = """
@@ -931,7 +933,7 @@ def get_item_store_variants(item_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to fetch variants: {e}")
 
 
-@app.post("/basket/add")
+@api_router.post("/basket/add")
 def add_to_basket(
     payload: AddBasketItemPayload, authorization: Optional[str] = Header(None)
 ):
@@ -964,7 +966,7 @@ def add_to_basket(
         raise HTTPException(status_code=500, detail=f"Basket mutation failure: {e}")
 
 
-@app.get("/basket/items")
+@api_router.get("/basket/items")
 async def get_basket_items(authorization: Optional[str] = Header(None)):
     user_id = get_user_from_token(authorization)
     query = """
@@ -1023,7 +1025,7 @@ async def get_basket_items(authorization: Optional[str] = Header(None)):
         )
 
 
-@app.post("/basket/update")
+@api_router.post("/basket/update")
 def update_basket_quantity(
     payload: UpdateQuantityPayload, authorization: Optional[str] = Header(None)
 ):
@@ -1052,7 +1054,7 @@ def update_basket_quantity(
         raise HTTPException(status_code=500, detail=f"Failed transaction context: {e}")
 
 
-@app.get("/receipts")
+@api_router.get("/receipts")
 def get_receipt_history(authorization: Optional[str] = Header(None)):
     user_id = get_user_from_token(authorization)
     try:
@@ -1082,7 +1084,7 @@ def get_receipt_history(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=500, detail=f"Ledger compile crash: {e}")
 
 
-@app.get("/analytics/spend")
+@api_router.get("/analytics/spend")
 async def get_spend_analytics(authorization: Optional[str] = Header(None)):
     user_id = get_user_from_token(authorization)
     try:
