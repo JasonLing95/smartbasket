@@ -220,11 +220,11 @@ export default function Page() {
             const notifData = await notifRes.json();
             const latest = notifData.notifications?.[0];
             
-            // Only trigger the alert banner if a genuine, unread notification exists
+            // Only set the alert if it is confirmed unread by the database
             if (latest && !latest.is_read) {
                 setLiveDropAlert(latest.message);
 
-                // Acknowledge receipt to the backend immediately so it can't double-fire
+                // Tell the database it has been seen so it doesn't fire on the next refresh
                 fetch(`${API_BASE}/api/notifications/read`, {
                     method: "POST",
                     headers: { 
@@ -232,7 +232,7 @@ export default function Page() {
                         ...fetchHeaders 
                     },
                     body: JSON.stringify({ notification_ids: [latest.id] })
-                }).catch(err => console.error("Failed to auto-dismiss notification setup:", err));
+                }).catch(err => console.error("Notification acknowledgment failed:", err));
             }
         }
 

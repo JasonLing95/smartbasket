@@ -258,7 +258,10 @@ async def sse_alerts(username: str):
                     break
 
                 try:
-                    # 1. Drain any pending items waiting in the database inbox
+                    # 1. Rest on the queue FIRST. Only wake up when a LIVE ingestion happens.
+                    await asyncio.wait_for(user_queue.get(), timeout=15.0)
+
+                    # 2. Now that a live event happened, drain any unread items safely
                     unread = execute_query(
                         "SELECT id, message FROM user_notifications WHERE username = %s AND is_read = FALSE;",
                         (username,),
@@ -272,11 +275,8 @@ async def sse_alerts(username: str):
                             commit=True,
                         )
 
-                    # 2. Rest on the queue until background ingestion awakes us
-                    await asyncio.wait_for(user_queue.get(), timeout=15.0)
-
                 except asyncio.TimeoutError:
-                    # 3. Stream heartbeat comment to maintain infrastructure connection
+                    # Stream heartbeat comment to maintain infrastructure connection
                     yield ": heartbeat\n\n"
                 except Exception as inner_err:
                     if username not in active_connections:
