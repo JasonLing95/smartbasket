@@ -24,6 +24,16 @@ def find_canonical_item(
     if res:
         return {"master_item_id": str(res[0][0]), "match_method": "strict_cache"}
 
+    # 1.5: Direct canonical name match (now useful since cleaned_name is passed)
+    canonical_query = """
+        SELECT id FROM master_items
+        WHERE canonical_name ILIKE %s
+        LIMIT 1;
+    """
+    res = execute_query(canonical_query, (cleaned_string,))
+    if res:
+        return {"master_item_id": str(res[0][0]), "match_method": "canonical_exact"}
+
     # 2. Tier 2: Trigram similarity fallback (The Aurora Performance Win)
     # This matches "Red Seedless Grap" straight to "Red Seedless Grape"
     # FIX: Escaped the literal trigram '%' operator as '%%' for psycopg2 compatibility

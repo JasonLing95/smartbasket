@@ -263,13 +263,18 @@ def extract_receipt_data_via_llm(text_blob: str) -> dict | None:
         "14. CRITICAL - IDENTICAL REPEATING ROWS: If a customer buys multiples of the same item and the store prints them on individual, consecutive lines, each with its own price (e.g., four consecutive lines of '*NESTLE WTR 12X500ML £2.65'), you MUST count how many times the row appears. Combine them into a single item, extract the single unit price (£2.65) as the 'base_price', and set the 'quantity' to the exact number of times the row appeared (e.g., 4). NEVER merge them and leave the quantity at 1.\n"
         "15. CRITICAL - SAINSBURY'S NECTAR SUMMARY: Sainsbury's receipts include a 'MY NECTAR SUMMARY' block that begins after a line of asterisks (***...). This section contains loyalty point balances and values (e.g., 'POINTS EARNED ON £2.74', 'POINTS EARNED 2'). You MUST completely ignore this entire block. NEVER extract items, discounts, prices, or totals from within it — including any £ values that coincidentally match item prices.\n"
         "16. CRITICAL - SAINSBURY'S OWN-BRAND PREFIXES: Sainsbury's prefixes product names with store codes. 'JS' = Sainsbury's own brand. Codes like 'SSTC', 'SO', 'TT', 'HBR' are internal category markers. Strip ALL such prefixes from the 'raw_string'. E.g., 'JS SSTC GRAPE 500G' → raw_string: 'GRAPE 500G'. Combined with Rule 14: if 'JS SSTC GRAPE 500G £1.37' appears on TWO consecutive lines, output ONE item: {raw_string: 'GRAPE 500G', base_price: 1.37, quantity: 2, line_total: 2.74}.\n\n"
+        "17. CRITICAL - CLEANED NAME: For every item, also produce a 'cleaned_name' field. "
+        "This is a normalized, human-readable English product name. "
+        "Expand store abbreviations (e.g., 'RDSD GRP' → 'Red Seedless Grapes', 'M SPINACH' → 'Mature Spinach', 'WHL MLK' → 'Whole Milk'). "
+        "Strip weight/size suffixes (e.g., '500G', '1.5L') — these belong in size fields, not the name. "
+        "Apply Title Case. If the raw_string is already clean (e.g., 'Organic Bananas'), cleaned_name can be identical.\n\n"
         "Expected Output Schema — you MUST use exactly these key names:\n"
         "{\n"
         '  "store_name": "Sainsbury\'s",\n'
         '  "date": "2026-06-11",\n'
         '  "total": 2.74,\n'
         '  "items": [\n'
-        '    {"raw_string": "GRAPE 500G", "base_price": 1.37, "line_total": 2.74, "discount_applied": 0, "discount_type": null, "quantity": 2}\n'
+        '    {"raw_string": "GRAPE 500G", "cleaned_name": "Grapes", "base_price": 1.37, "line_total": 2.74, "discount_applied": 0, "discount_type": null, "quantity": 2}\n'
         "  ]\n"
         "}"
     )

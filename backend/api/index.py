@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import uuid
 import os
 import sys
 import logging
@@ -276,12 +277,12 @@ def execute_receipt_ingestion_hash_upgraded(
 
     for item in items:
         raw_string = item.get("raw_string", "")
+        match_string = item.get("cleaned_name") or raw_string
 
         if not raw_string:
             logger.info("⚠️ Ingestion blocked an empty string stub. Skipping this row.")
             continue
 
-        # ✅ FIXED: Extract the new loyalty-aware properties from the OCR engine
         unit_price = float(item.get("unit_price", 0))
         base_price = float(item.get("base_price", unit_price))
 
@@ -295,43 +296,90 @@ def execute_receipt_ingestion_hash_upgraded(
         discount_type = item.get("discount_type")
         quantity = int(item.get("quantity", 1))
 
-        matched_item = find_canonical_item(raw_string)
+        matched_item = find_canonical_item(match_string)
         master_item_id = None
 
         if matched_item:
             master_item_id = matched_item["master_item_id"]
         else:
-            ai_resolution = resolve_unmatched_entity(raw_string, discount_type)
-            ai_action = ai_resolution.get("action")
+            candidates_query = """
+                SELECT id, canonical_name, category, 
+                    similarity(canonical_name, %s) AS score
+                FROM master_items
+                WHERE similarity(canonical_name, %s) > 0.3  -- Loosen the gate
+                ORDER BY score DESC
+                LIMIT 5;
+            """
+            candidate_rows = execute_query(
+                candidates_query, (match_string, match_string)
+            )
 
-            if ai_action == "skip":
-                logger.info(
-                    f"⚠️ AI Matcher skipped '{raw_string}'. Dropping from ingestion."
-                )
+            # Format candidates for the LLM (keep it compact)
+            candidates = [
+                {"id": str(row[0]), "name": row[1], "category": row[2]}
+                for row in candidate_rows
+            ]
+
+            # Fetch the strict taxonomy (distinct categories)
+            cats_query = "SELECT DISTINCT category FROM master_items ORDER BY category;"
+            categories = [row[0] for row in execute_query(cats_query)]
+            # Ensure fallback defaults if the table is empty (e.g., initial seed)
+            if not categories:
+                categories = [
+                    "Groceries",
+                    "Dairy",
+                    "Beverages",
+                    "Fresh Produce",
+                    "Meat",
+                    "Bakery",
+                ]
+
+            ai_resolution = resolve_unmatched_entity(
+                raw_string=match_string,
+                discount_type=discount_type,
+                candidate_items=candidates,
+                available_categories=categories,
+            )
+            action = ai_resolution.get("action")
+
+            if action == "skip":
                 continue
 
-            ai_match_id = ai_resolution.get("matched_item_id")
-            if ai_action == "match" and ai_match_id:
-                master_item_id = ai_match_id
-            elif ai_action == "create" or (ai_action == "match" and not ai_match_id):
-                clean_name = ai_resolution.get("cleaned_name", raw_string)
-                category = ai_resolution.get("category", "Groceries")
+            if action == "match":
+                llm_id = ai_resolution.get("matched_item_id")
+                if llm_id and any(c["id"] == llm_id for c in candidates):
+                    master_item_id = llm_id
+                else:
+                    # The LLM said "match" but gave a bad ID – fallback to "create"
+                    logger.warning(
+                        f"LLM returned invalid ID '{llm_id}' for '{raw_string}'. Falling back to create."
+                    )
+                    action = "create"  # Trigger the create block below
 
-                # ✅ Optional: Also grab the size metrics if your LLM successfully parsed them
-                size_value = ai_resolution.get("size_value")
-                size_unit = ai_resolution.get("size_unit")
+            if action == "create":
+                new_name = ai_resolution.get("cleaned_name", raw_string)
+                new_cat = ai_resolution.get("category", "Miscellaneous")
+                size_val = ai_resolution.get("size_value")  # float or None
+                size_unit = ai_resolution.get("size_unit")  # string or None
 
-                import uuid
-
-                new_uuid = str(uuid.uuid4())
-
-                # Update this if you added size_value and size_unit to master_items insert
-                execute_query(
-                    "INSERT INTO master_items (id, canonical_name, category, is_verified) VALUES (%s::uuid, %s, %s, FALSE);",
-                    (new_uuid, clean_name, category),
-                    commit=True,
+                # Check one last time if it accidentally matches an ID not returned
+                # (Just a safety double-check)
+                double_check = execute_query(
+                    "SELECT id FROM master_items WHERE canonical_name ILIKE %s LIMIT 1;",
+                    (new_name,),
                 )
-                master_item_id = new_uuid
+                if double_check:
+                    master_item_id = double_check[0][0]
+                else:
+                    new_uuid = str(uuid.uuid4())
+                    execute_query(
+                        """INSERT INTO master_items 
+                        (id, canonical_name, category, brand, size_value, size_unit, is_verified) 
+                        VALUES (%s::uuid, %s, %s, 'Own Brand', %s, %s, FALSE);""",
+                        (new_uuid, new_name, new_cat, size_val, size_unit),
+                        commit=True,
+                    )
+                    master_item_id = new_uuid
 
         if not master_item_id:
             continue

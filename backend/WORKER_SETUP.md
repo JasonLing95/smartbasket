@@ -1,71 +1,23 @@
-# SmartBasket Async OCR Worker (EC2 Setup)
+# SmartBasket Backend Services (EC2 Setup)
 
-This document outlines the deployment and configuration steps for the SmartBasket asynchronous OCR worker. This daemon runs 24/7 on an Amazon EC2 instance, polling AWS SQS for incoming receipt images routed from the Vercel edge network, processing them via EasyOCR (CPU), and committing the extracted data to PostgreSQL.
-
----
-
-# 1. Prerequisites
-
-Before setting up the worker, ensure your EC2 instance (Amazon Linux 2023 / Ubuntu) has the following installed:
-
-- Python 3.9+ (3.10+ recommended per boto3 deprecation warnings)
-- git
-- pip and virtualenv
-
-Your EC2 instance must also have an attached IAM Role (or configured `~/.aws/credentials`) with permissions for:
-
-- `s3:GetObject` on the `smartbasket-receipts` bucket.
-- `sqs:ReceiveMessage`
-- `sqs:DeleteMessage` on the designated queue.
+This document outlines the deployment and configuration for the SmartBasket FastAPI Web Server and the Async OCR Worker. Both services run as background daemons on your EC2 instance.
 
 ---
 
-# 2. Installation
+# 1. Environment Configuration
 
-Clone the repository and set up the Python virtual environment specifically for the backend worker.
+Ensure your `.env` file at:
 
 ```bash
-# Navigate to the home directory and clone
-cd /home/ec2-user
-git clone <your-repo-url> smartbasket
-cd smartbasket/backend
-
-# Initialize and activate the virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install the heavy ML and infrastructure dependencies
-pip install -r requirements.txt
+/home/ec2-user/smartbasket/backend/.env
 ```
 
-**Note:** The EC2 `requirements.txt` must include:
-
-- boto3
-- easyocr
-- torch
-- python-dotenv
-- psycopg2-binary
-- fastapi
-
----
-
-# 3. Environment Configuration
-
-Create a `.env` file in the root of the backend directory. This is required for both the database pool engine and the AWS SDK.
-
-```bash
-nano /home/ec2-user/smartbasket/backend/.env
-```
-
-Add the following variables:
+contains:
 
 ```env
 APP_ENV=production
-
-# Database
 DATABASE_URL=postgresql://<user>:<password>@<rds-endpoint>:5432/<dbname>
-
-# AWS Infrastructure
+GROQ_API_KEY=
 AWS_REGION=eu-west-2
 AWS_STORAGE_BUCKET_NAME=smartbasket-receipts
 AWS_SQS_QUEUE_URL=https://sqs.eu-west-2.amazonaws.com/<account-id>/<queue-name>
@@ -73,9 +25,36 @@ AWS_SQS_QUEUE_URL=https://sqs.eu-west-2.amazonaws.com/<account-id>/<queue-name>
 
 ---
 
-# 4. Systemd Daemon Setup
+# 2. FastAPI Web Server Service
 
-To ensure the worker runs continuously in the background and automatically restarts on server reboots or fatal crashes, configure it as a systemd service.
+Create the service file:
+
+```bash
+sudo nano /etc/systemd/system/smartbasket-api.service
+```
+
+Paste:
+
+```ini
+[Unit]
+Description=SmartBasket FastAPI Web Server
+After=network.target
+
+[Service]
+User=ec2-user
+WorkingDirectory=/home/ec2-user/smartbasket/backend
+ExecStart=/home/ec2-user/smartbasket/backend/venv/bin/uvicorn api.index:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+EnvironmentFile=/home/ec2-user/smartbasket/backend/.env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+---
+
+# 3. Async OCR Worker Service
 
 Create the service file:
 
@@ -83,7 +62,7 @@ Create the service file:
 sudo nano /etc/systemd/system/smartbasket-worker.service
 ```
 
-Paste the following configuration (verify the paths match your EC2 user):
+Paste:
 
 ```ini
 [Unit]
@@ -97,24 +76,33 @@ ExecStart=/home/ec2-user/smartbasket/backend/venv/bin/python worker.py
 Restart=always
 RestartSec=5
 EnvironmentFile=/home/ec2-user/smartbasket/backend/.env
-
-# Force Python to flush stdout to journalctl instantly
 Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Enable and start the daemon:
+---
+
+# 4. Activation
+
+Reload systemd:
 
 ```bash
-# Reload systemd to recognize the new service
 sudo systemctl daemon-reload
+```
 
-# Enable it to start on server boot
+Enable services:
+
+```bash
+sudo systemctl enable smartbasket-api
 sudo systemctl enable smartbasket-worker
+```
 
-# Start the service immediately
+Start services:
+
+```bash
+sudo systemctl start smartbasket-api
 sudo systemctl start smartbasket-worker
 ```
 
@@ -122,38 +110,42 @@ sudo systemctl start smartbasket-worker
 
 # 5. Operations & Debugging
 
-Because the worker processes requests invisibly in the background, use `journalctl` to monitor its health and OCR execution logs.
+## Deployment Workflow
 
-## View live, tailing logs (recommended for debugging)
+After pulling new code:
+
+```bash
+git pull
+```
+
+Restart both services:
+
+```bash
+sudo systemctl restart smartbasket-api smartbasket-worker
+```
+
+---
+
+## Monitoring Logs
+
+API logs:
+
+```bash
+sudo journalctl -u smartbasket-api -f
+```
+
+Worker logs:
 
 ```bash
 sudo journalctl -u smartbasket-worker -f
 ```
 
-## Restart the worker
-
-Required after pulling new code via git:
-
-```bash
-sudo systemctl restart smartbasket-worker
-```
-
-## Stop the worker
-
-Useful for manual SQS debugging via AWS Console:
-
-```bash
-sudo systemctl stop smartbasket-worker
-```
-
 ---
 
-# Known Warnings
+## Status Check
 
-### PyTorch CPU Warning
+Verify both services are running:
 
+```bash
+systemctl status smartbasket-api smartbasket-worker
 ```
-UserWarning: 'pin_memory' argument is set as true but no accelerator is found
-```
-
-This is a standard PyTorch warning indicating that the script is utilizing the CPU rather than a GPU. It is expected behavior on this instance tier and can be safely ignored.
