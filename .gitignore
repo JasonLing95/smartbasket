@@ -14,7 +14,9 @@ ENV/
 
 # Local data dumps
 **/data/
-backend/seed/
+backend/seed/build_dict.py
+backend/seed/canonical_mapping.json
+backend/seed/seed.py
 *.db
 *.sqlite3
 .DS_Store
