@@ -127,6 +127,10 @@ class UpdateQuantityPayload(BaseModel):
     action: str
 
 
+class MarkReadPayload(BaseModel):
+    notification_ids: List[str]
+
+
 # --- Real-Time SSE Infrastructure ---
 active_connections = {}
 
@@ -1254,15 +1258,50 @@ async def get_spend_analytics(authorization: Optional[str] = Header(None)):
 
 
 @api_router.get("/notifications")
-def get_notifications(authorization: Optional[str] = Header(None)):
+def get_notifications(
+    unread_only: bool = False, authorization: Optional[str] = Header(None)
+):
     username = get_user_from_token(authorization)
-    rows = execute_query(
-        """SELECT id, message, created_at FROM user_notifications 
-           WHERE username = %s 
-           ORDER BY created_at DESC LIMIT 20;""",
-        (username,),
-    )
-    return {"notifications": [{"id": str(r[0]), "message": r[1]} for r in rows]}
+
+    if unread_only:
+        query = """SELECT id, message, is_read FROM user_notifications 
+                   WHERE username = %s AND is_read = FALSE
+                   ORDER BY created_at DESC LIMIT 20;"""
+    else:
+        query = """SELECT id, message, is_read FROM user_notifications 
+                   WHERE username = %s 
+                   ORDER BY created_at DESC LIMIT 20;"""
+
+    rows = execute_query(query, (username,))
+    return {
+        "notifications": [
+            {"id": str(r[0]), "message": r[1], "is_read": r[2]} for r in rows
+        ]
+    }
+
+
+@api_router.post("/notifications/read")
+def mark_notifications_as_read(
+    payload: MarkReadPayload, authorization: Optional[str] = Header(None)
+):
+    username = get_user_from_token(authorization)
+
+    if not payload.notification_ids:
+        return {"status": "success", "message": "No IDs provided."}
+
+    # Safe parameterized batch updating for multiple UUID strings
+    placeholders = ", ".join(["%s::uuid"] * len(payload.notification_ids))
+    query = f"""
+        UPDATE user_notifications 
+        SET is_read = TRUE 
+        WHERE username = %s AND id IN ({placeholders});
+    """
+
+    execute_query(query, (username, *payload.notification_ids), commit=True)
+    return {
+        "status": "success",
+        "message": f"Marked {len(payload.notification_ids)} items as read.",
+    }
 
 
 app.include_router(api_router)

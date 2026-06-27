@@ -215,11 +215,25 @@ export default function Page() {
           fetch(`${API_BASE}/api/receipts`, { headers: fetchHeaders })
         ]);
 
-        const notifRes = await fetch(`${API_BASE}/api/notifications`, { headers: fetchHeaders });
+        const notifRes = await fetch(`${API_BASE}/api/notifications?unread_only=true`, { headers: fetchHeaders });
         if (notifRes.ok) {
             const notifData = await notifRes.json();
             const latest = notifData.notifications?.[0];
-            if (latest) setLiveDropAlert(latest.message);
+            
+            // Only trigger the alert banner if a genuine, unread notification exists
+            if (latest && !latest.is_read) {
+                setLiveDropAlert(latest.message);
+
+                // Acknowledge receipt to the backend immediately so it can't double-fire
+                fetch(`${API_BASE}/api/notifications/read`, {
+                    method: "POST",
+                    headers: { 
+                        "Content-Type": "application/json",
+                        ...fetchHeaders 
+                    },
+                    body: JSON.stringify({ notification_ids: [latest.id] })
+                }).catch(err => console.error("Failed to auto-dismiss notification setup:", err));
+            }
         }
 
         if (basketRes.status === 401) { handleLogout(); return; }
