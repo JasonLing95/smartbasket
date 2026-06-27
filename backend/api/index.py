@@ -137,20 +137,75 @@ async def notify_user(username: str, message: str):
         await active_connections[username].put(message)
 
 
+async def process_alerts_background(
+    item_ids: List[str], store_name: str, new_prices: List[float]
+):
+    pool = get_db_pool()
+    conn = pool.getconn()
+    try:
+        with conn.cursor() as cursor:
+            for item_id, price in zip(item_ids, new_prices):
+                basket_query = """
+                    SELECT DISTINCT user_id FROM user_baskets 
+                    WHERE master_item_id = %s::uuid AND last_known_price > %s;
+                """
+                cursor.execute(basket_query, (item_id, price))
+                matches = cursor.fetchall()
+
+                for user in matches:
+                    username = user[0]
+                    live_message = f"🔥 Live Price Drop: {store_name} just scanned an item on your list for £{price:.2f}!"
+
+                    # 1. PERSIST TO DB INBOX FIRST
+                    cursor.execute(
+                        "INSERT INTO user_notifications (username, message) VALUES (%s, %s);",
+                        (username, live_message),
+                    )
+                    conn.commit()
+
+                    # 2. Alert the active memory channel if alive
+                    if username in active_connections:
+                        await active_connections[username].put("NEW_NOTIFICATION")
+    except Exception as e:
+        logger.error(f"Background alert failure: {e}")
+    finally:
+        pool.putconn(conn)
+
+
 @api_router.get("/stream/alerts")
 async def sse_alerts(username: str):
-    """Maintains a persistent connection to the frontend to push live alerts."""
     if username not in active_connections:
         active_connections[username] = asyncio.Queue()
 
     async def event_generator():
         try:
             while True:
-                # Wait asynchronously until a new message is pushed to this user's queue
-                msg = await active_connections[username].get()
-                yield f"data: {msg}\n\n"
+                try:
+                    # Clear unread alerts on connection startup or loop awake
+                    unread = execute_query(
+                        "SELECT id, message FROM user_notifications WHERE username = %s AND is_read = FALSE;",
+                        (username,),
+                    )
+                    for notif_id, msg in unread:
+                        yield f"data: {msg}\n\n"
+                        execute_query(
+                            "UPDATE user_notifications SET is_read = TRUE WHERE id = %s::uuid;",
+                            (notif_id,),
+                            commit=True,
+                        )
+
+                    # Wait on memory trigger block for 15 seconds max (Heartbeat)
+                    await asyncio.wait_for(
+                        active_connections[username].get(), timeout=15.0
+                    )
+
+                except asyncio.TimeoutError:
+                    # Send standard comment line to keep proxies from dropping the socket
+                    yield ": heartbeat\n\n"
+                except Exception as loop_err:
+                    logger.error(f"SSE loop err: {loop_err}")
+                    await asyncio.sleep(2)
         except asyncio.CancelledError:
-            # Clean up the connection if the user closes the browser
             active_connections.pop(username, None)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
